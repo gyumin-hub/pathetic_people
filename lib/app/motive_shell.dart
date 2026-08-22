@@ -21,6 +21,7 @@ class MotiveShell extends StatefulWidget {
     required this.plannerViewModel,
     required this.chatViewModel,
     required this.profileViewModel,
+    required this.onLogout,
     super.key,
   });
 
@@ -29,6 +30,7 @@ class MotiveShell extends StatefulWidget {
   final PlannerViewModel plannerViewModel;
   final ChatViewModel chatViewModel;
   final ProfileViewModel profileViewModel;
+  final Future<void> Function() onLogout;
 
   @override
   State<MotiveShell> createState() => _MotiveShellState();
@@ -51,6 +53,7 @@ class _MotiveShellState extends State<MotiveShell> with WidgetsBindingObserver {
       viewModel: widget.profileViewModel,
       onOpenPlanner: () => setState(() => _selectedIndex = 2),
       onOpenExplore: () => setState(() => _selectedIndex = 1),
+      onLogout: widget.onLogout,
     ),
   ];
 

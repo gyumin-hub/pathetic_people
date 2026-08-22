@@ -46,4 +46,6 @@ abstract interface class AppRepository implements Listenable {
   void sendMessage(String roomId, String message);
   ChatRoom createDirectRoom(String userId);
   ChatRoom createGroupRoom(String title, List<String> userIds);
+
+  void dispose();
 }

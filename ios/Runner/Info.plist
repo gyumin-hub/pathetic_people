@@ -28,6 +28,13 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>계획의 시작과 완료를 사진으로 인증하기 위해 카메라를 사용합니다.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>개발 중 같은 Wi-Fi에 연결된 Mac의 로컬 서버와 통신하기 위해 로컬 네트워크 접근이 필요합니다.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>계획 인증에 사용할 사진을 선택하기 위해 사진 보관함을 사용합니다.</string>
 	<key>UIApplicationSceneManifest</key>

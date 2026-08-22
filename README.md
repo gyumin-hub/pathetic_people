@@ -12,22 +12,45 @@
 - 1:1/그룹 채팅 생성, 검색/필터, 읽음 처리, 메시지 전송
 - 프로필 편집, 실제 계획 기반 통계·XP·레벨·연속 기록
 - 실패 공개, 단체방 알림, 독설 강도 설정의 로컬 정책 반영
+- 실제 서버 회원가입·로그인, JWT 보안 저장, 자동 로그인과 로그아웃
 
-현재 데이터는 `MockAppRepository`의 메모리에 저장됩니다. 앱을 재실행하면
-초기 데이터로 돌아갑니다. 서버 API가 준비되면 `AppRepository`를 구현하는
-네트워크 Repository로 교체할 수 있습니다.
+회원가입과 로그인 사용자 정보는 Spring 서버를 거쳐 MySQL에 저장됩니다. 로그인
+토큰은 운영체제 보안 저장소에 보관하며 앱을 다시 실행할 때 서버에서 유효성을
+확인합니다. 피드·계획·채팅·프로필 콘텐츠는 아직 `MockAppRepository`의 메모리에
+저장되므로 앱을 재실행하면 초기 데이터로 돌아갑니다.
 
-사진 업로드, 실제 푸시 알림, 영구 저장, 로그인 사용자 간 실시간 채팅은
-서버·스토리지 API 연결 단계의 범위입니다. 현재 UI에서는 서버 없이 확인할
-수 있는 핵심 사용자 흐름을 로컬 상태로 완성했습니다.
+다음 서버 연결 범위는 계획 생성·조회이며, 이후 사진 업로드, 실제 푸시 알림,
+로그인 사용자 간 소셜 피드와 실시간 채팅을 순서대로 연결합니다.
 
-## 실행 방법
+## 개발환경 준비
+
+Flutter 앱과 Spring Boot 서버는 별도 저장소입니다. Mac·Windows에서 두 저장소를
+받는 방법, MySQL 준비, 비밀 설정, Flyway 규칙, 에뮬레이터별 API 주소는
+[Mac·Windows 개발환경 준비](docs/DEVELOPMENT_SETUP.md)에 정리되어 있습니다.
+
+실제 DB 비밀번호나 JWT 키는 README나 일반 메모장에 적지 않고, Git에서 제외되는 서버의
+`application-secret.properties`에만 저장합니다.
+
+## 앱 실행하기
+
+현재 앱은 로그인에 성공해야 피드·계획·채팅·프로필 화면으로 들어갈 수 있는 인증 게이트
+구조입니다. MySQL과 Spring 서버가 꺼진 상태에서도 앱 자체는 실행되지만 로그인·회원가입
+화면까지만 확인할 수 있고, 로그인 요청과 자동 로그인은 실패합니다. 기존 로컬 기능이 있는
+5개 탭까지 확인하려면 MySQL과 Spring 서버를 먼저 실행한 뒤 로그인해야 합니다.
+
+기본 Flutter 확인 명령은 다음과 같습니다.
 
 ```bash
 flutter pub get
 flutter analyze
 flutter test
 flutter run
+```
+
+Android 에뮬레이터에서 로컬 서버에 연결하는 명시적 실행 예시는 다음과 같습니다.
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
 ```
 
 ## 아키텍처
@@ -37,7 +60,7 @@ flutter run
 ```text
 lib/
 ├── app/                 # 앱 시작점과 5개 탭 셸
-├── core/                # 테마, 공통 위젯, 날짜 유틸리티
+├── core/                # 환경 설정, HTTP, 테마, 공통 위젯, 날짜 유틸리티
 ├── data/repositories/   # 로컬 목 데이터 구현체
 ├── domain/
 │   ├── models/          # 앱이 사용하는 순수 데이터 모델
@@ -48,7 +71,8 @@ lib/
     ├── explore/
     ├── planner/
     ├── chat/
-    └── profile/
+    ├── profile/
+    └── auth/            # 실제 로그인 세션과 인증 화면
 ```
 
 데이터 변경 흐름은 다음과 같습니다.
@@ -67,9 +91,9 @@ lib/
 - 기능 폴더끼리 서로 직접 참조하지 않습니다.
 - 공통 UI는 `core/widgets`로만 올립니다.
 
-## 서버 연동 시 교체 지점
+## 다음 서버 연동 지점
 
 `lib/domain/repositories/app_repository.dart`의 규칙을 구현하는
 `RemoteAppRepository`를 추가하고, `MotiveApp`에서 `MockAppRepository` 대신
-주입하면 됩니다. 인증 토큰 저장, 파일 업로드, 실시간 채팅, 푸시 알림은
-서버 API가 준비될 때 이 계층에 연결합니다.
+주입하면 됩니다. 인증은 별도 `AuthRepository`를 통해 이미 서버와 연결되어
+있으며, 계획부터 `Future` 기반의 네트워크 Repository로 순차 교체합니다.

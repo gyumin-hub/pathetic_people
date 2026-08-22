@@ -7,7 +7,8 @@ plugins {
 
 android {
     namespace = "com.gymin.pathetic_people"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_secure_storage 11.x compiles against Android API 37.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

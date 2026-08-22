@@ -17,12 +17,14 @@ class ProfilePage extends StatefulWidget {
     required this.viewModel,
     required this.onOpenPlanner,
     required this.onOpenExplore,
+    required this.onLogout,
     super.key,
   });
 
   final ProfileViewModel viewModel;
   final VoidCallback onOpenPlanner;
   final VoidCallback onOpenExplore;
+  final Future<void> Function() onLogout;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -403,6 +405,12 @@ class _ProfilePageState extends State<ProfilePage> {
                             '계획을 등록하고 완료 인증을 남기세요. 정해둔 시간이 지나면 실패 기록과 독설이 자동 생성돼요.',
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        _SettingsNavigationTile(
+                          icon: Icons.logout_rounded,
+                          title: '로그아웃',
+                          onTap: () => _confirmLogout(sheetContext),
+                        ),
                       ],
                     ),
                   ),
@@ -413,6 +421,34 @@ class _ProfilePageState extends State<ProfilePage> {
         );
       },
     );
+  }
+
+  Future<void> _confirmLogout(BuildContext sheetContext) async {
+    final shouldLogout = await showDialog<bool>(
+      context: sheetContext,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('로그아웃할까요?'),
+          content: const Text('이 기기에 저장된 로그인 정보가 삭제됩니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('로그아웃'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLogout != true || !sheetContext.mounted) {
+      return;
+    }
+    Navigator.of(sheetContext).pop();
+    await widget.onLogout();
   }
 
   Future<_HarshnessLevel?> _showHarshnessDialog(BuildContext sheetContext) {
