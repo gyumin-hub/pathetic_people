@@ -1,11 +1,11 @@
 {
-    "name": "pathetic_people",
-    "short_name": "pathetic_people",
+    "name": "motive",
+    "short_name": "motive",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "patheticpelple",
+    "background_color": "#FFFFFF",
+    "theme_color": "#FFFFFF",
+    "description": "A spicy social self-improvement app.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
