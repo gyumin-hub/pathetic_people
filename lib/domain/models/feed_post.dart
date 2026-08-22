@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 enum PostOutcome { success, failure }
 
 enum MediaKind { morning, workout, study, reading, journal, water }
@@ -31,6 +33,9 @@ class FeedPost {
     required this.isLiked,
     required this.isSaved,
     this.streakDays,
+    this.sourcePlanId,
+    this.mediaBytes,
+    this.proofNote,
   }) : _comments = List<PostComment>.unmodifiable(comments);
 
   final String id;
@@ -46,29 +51,52 @@ class FeedPost {
   final bool isLiked;
   final bool isSaved;
   final int? streakDays;
+  final String? sourcePlanId;
+  final Uint8List? mediaBytes;
+  final String? proofNote;
 
   List<PostComment> get comments => _comments;
 
   FeedPost copyWith({
+    String? authorId,
+    PostOutcome? outcome,
+    MediaKind? mediaKind,
+    String? planTitle,
+    String? mediaHeadline,
+    String? mentorMessage,
+    DateTime? createdAt,
     int? likes,
     List<PostComment>? comments,
     bool? isLiked,
     bool? isSaved,
+    int? streakDays,
+    bool clearStreakDays = false,
+    String? sourcePlanId,
+    bool clearSourcePlanId = false,
+    Uint8List? mediaBytes,
+    bool clearMediaBytes = false,
+    String? proofNote,
+    bool clearProofNote = false,
   }) {
     return FeedPost(
       id: id,
-      authorId: authorId,
-      outcome: outcome,
-      mediaKind: mediaKind,
-      planTitle: planTitle,
-      mediaHeadline: mediaHeadline,
-      mentorMessage: mentorMessage,
-      createdAt: createdAt,
+      authorId: authorId ?? this.authorId,
+      outcome: outcome ?? this.outcome,
+      mediaKind: mediaKind ?? this.mediaKind,
+      planTitle: planTitle ?? this.planTitle,
+      mediaHeadline: mediaHeadline ?? this.mediaHeadline,
+      mentorMessage: mentorMessage ?? this.mentorMessage,
+      createdAt: createdAt ?? this.createdAt,
       likes: likes ?? this.likes,
       comments: comments ?? _comments,
       isLiked: isLiked ?? this.isLiked,
       isSaved: isSaved ?? this.isSaved,
-      streakDays: streakDays,
+      streakDays: clearStreakDays ? null : streakDays ?? this.streakDays,
+      sourcePlanId: clearSourcePlanId
+          ? null
+          : sourcePlanId ?? this.sourcePlanId,
+      mediaBytes: clearMediaBytes ? null : mediaBytes ?? this.mediaBytes,
+      proofNote: clearProofNote ? null : proofNote ?? this.proofNote,
     );
   }
 }

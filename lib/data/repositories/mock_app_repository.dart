@@ -10,9 +10,12 @@ import '../../domain/repositories/app_repository.dart';
 import '../../domain/services/mentor_message_service.dart';
 
 class MockAppRepository extends ChangeNotifier implements AppRepository {
-  MockAppRepository() {
+  MockAppRepository({DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now {
     _seedData();
   }
+
+  final DateTime Function() _clock;
 
   late AppUser _currentUser;
   AppPreferences _preferences = const AppPreferences(
@@ -165,6 +168,7 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
 
   @override
   void addPlan(PlanDraft draft) {
+    _validatePlanDraft(draft);
     final seriesId = 'plan-${DateTime.now().microsecondsSinceEpoch}';
     final occurrences = _buildPlanOccurrences(draft, seriesId: seriesId).where(
       (occurrence) => !_plans.any((existing) => existing.id == occurrence.id),
@@ -176,9 +180,13 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
 
   @override
   void updatePlan(String planId, PlanDraft draft) {
+    _validatePlanDraft(draft);
     final index = _plans.indexWhere((plan) => plan.id == planId);
     if (index == -1) return;
     final plan = _plans[index];
+    if (plan.progress != PlanProgress.pending) {
+      throw StateError('완료되거나 실패한 계획은 수정할 수 없습니다.');
+    }
     final seriesId =
         plan.seriesId ?? 'plan-${DateTime.now().microsecondsSinceEpoch}';
     if (plan.seriesId != null) {
@@ -209,26 +217,63 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
   }
 
   @override
-  void togglePlanCompletion(String planId) {
-    final index = _plans.indexWhere((plan) => plan.id == planId);
-    if (index == -1) return;
+  void startPlan(String planId, PlanProofDraft proofDraft) {
+    if (proofDraft.type != PlanProofType.start) {
+      throw ArgumentError.value(
+        proofDraft.type,
+        'proofDraft.type',
+        '시작 인증에는 PlanProofType.start가 필요합니다.',
+      );
+    }
+    final index = _planIndexOrThrow(planId);
     final plan = _plans[index];
-    final isCompleted = plan.progress == PlanProgress.completed;
-    final wasFailed = plan.progress == PlanProgress.failed;
-    final nextProgress = isCompleted
-        ? PlanProgress.pending
-        : PlanProgress.completed;
+    if (plan.progress != PlanProgress.pending) {
+      throw StateError('대기 중인 계획만 시작 인증을 저장할 수 있습니다.');
+    }
+    final recordedAt = _clock();
+    _validateProofWindow(plan, recordedAt);
     _plans[index] = plan.copyWith(
-      progress: nextProgress,
-      completedAt: isCompleted ? null : DateTime.now(),
-      clearCompletedAt: isCompleted,
+      startProof: _createProof(plan.id, proofDraft, recordedAt: recordedAt),
+    );
+    notifyListeners();
+  }
+
+  @override
+  void completePlan(String planId, PlanProofDraft proofDraft) {
+    if (proofDraft.type != PlanProofType.completion) {
+      throw ArgumentError.value(
+        proofDraft.type,
+        'proofDraft.type',
+        '완료 인증에는 PlanProofType.completion이 필요합니다.',
+      );
+    }
+    final index = _planIndexOrThrow(planId);
+    final plan = _plans[index];
+    if (plan.progress != PlanProgress.pending) {
+      throw StateError('대기 중인 계획만 완료 인증할 수 있습니다.');
+    }
+    if (plan.photoProofRequired &&
+        (proofDraft.mediaBytes == null || proofDraft.mediaBytes!.isEmpty)) {
+      throw StateError('이 계획은 사진 인증을 첨부해야 완료할 수 있습니다.');
+    }
+    if (proofDraft.sharedToFeed &&
+        (proofDraft.mediaBytes == null || proofDraft.mediaBytes!.isEmpty)) {
+      throw StateError('피드에 공유하려면 완료 인증 사진을 첨부해야 합니다.');
+    }
+    final completedAt = _clock();
+    _validateProofWindow(plan, completedAt);
+    _plans[index] = plan.copyWith(
+      progress: PlanProgress.completed,
+      completedAt: completedAt,
+      completionProof: _createProof(
+        plan.id,
+        proofDraft,
+        recordedAt: completedAt,
+      ),
     );
     _removeGeneratedPlanPosts(plan.id);
-    if (nextProgress == PlanProgress.completed) {
+    if (proofDraft.sharedToFeed) {
       _addPlanPost(_plans[index], PostOutcome.success);
-      if (wasFailed && _preferences.systemChatAlertEnabled) {
-        _announcePlanRecovery(_plans[index], DateTime.now());
-      }
     }
     notifyListeners();
   }
@@ -240,7 +285,7 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
     for (var index = 0; index < _plans.length; index++) {
       final plan = _plans[index];
       if (plan.progress == PlanProgress.pending &&
-          plan.scheduledAt.isBefore(now)) {
+          !plan.verificationDueAt.isAfter(now)) {
         _plans[index] = plan.copyWith(progress: PlanProgress.failed);
         newlyFailed.add(_plans[index]);
       }
@@ -251,15 +296,22 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
     }
 
     newlyFailed.sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
-    for (final plan in newlyFailed.take(3)) {
-      if (_preferences.publicFailureEnabled) {
+    for (final plan in newlyFailed) {
+      if (plan.visibility == PlanVisibility.publicChallenge &&
+          _preferences.publicFailureEnabled) {
         _addPlanPost(plan, PostOutcome.failure);
       }
-      if (_preferences.systemChatAlertEnabled) {
-        _announcePlanFailure(plan, now);
-      }
     }
-    if (newlyFailed.length > 3 && _preferences.systemChatAlertEnabled) {
+    for (final plan in newlyFailed.take(3)) {
+      _announcePlanFailure(
+        plan,
+        now,
+        broadcastToGroups:
+            plan.visibility == PlanVisibility.publicChallenge &&
+            _preferences.systemChatAlertEnabled,
+      );
+    }
+    if (newlyFailed.length > 3) {
       _announceMissedSummary(newlyFailed.length - 3, now);
     }
     notifyListeners();
@@ -365,6 +417,51 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
     return room;
   }
 
+  int _planIndexOrThrow(String planId) {
+    final index = _plans.indexWhere((plan) => plan.id == planId);
+    if (index == -1) {
+      throw ArgumentError.value(planId, 'planId', '존재하지 않는 계획입니다.');
+    }
+    return index;
+  }
+
+  void _validatePlanDraft(PlanDraft draft) {
+    if (!draft.verificationDueAt.isAfter(draft.scheduledAt)) {
+      throw ArgumentError.value(
+        draft.verificationDueAt,
+        'verificationDueAt',
+        '완료 인증 종료 시각은 시작 예정 시각보다 뒤여야 합니다.',
+      );
+    }
+  }
+
+  void _validateProofWindow(PlanItem plan, DateTime now) {
+    if (now.isBefore(plan.scheduledAt)) {
+      throw StateError('시작 예정 시간이 된 뒤에 인증할 수 있습니다.');
+    }
+    if (!now.isBefore(plan.verificationDueAt)) {
+      throw StateError('완료 인증 시간이 지나 이 계획은 인증할 수 없습니다.');
+    }
+  }
+
+  PlanProof _createProof(
+    String planId,
+    PlanProofDraft draft, {
+    DateTime? recordedAt,
+  }) {
+    final savedAt = recordedAt ?? DateTime.now();
+    final mediaBytes = draft.mediaBytes;
+    return PlanProof(
+      id: 'proof-$planId-${draft.type.name}-${savedAt.microsecondsSinceEpoch}',
+      type: draft.type,
+      recordedAt: savedAt,
+      mediaBytes: mediaBytes == null ? null : Uint8List.fromList(mediaBytes),
+      mediaName: draft.mediaName,
+      note: draft.note.trim(),
+      sharedToFeed: draft.sharedToFeed,
+    );
+  }
+
   void _sortPlans() {
     _plans.sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
   }
@@ -373,6 +470,9 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
     PlanDraft draft, {
     required String seriesId,
   }) {
+    final verificationWindow = draft.verificationDueAt.difference(
+      draft.scheduledAt,
+    );
     final dates = _recurrenceDates(
       draft.scheduledAt,
       draft.recurrence,
@@ -391,10 +491,13 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
             id: isRepeating ? '$seriesId-$dateKey' : seriesId,
             title: draft.title,
             scheduledAt: scheduledAt,
+            verificationDueAt: scheduledAt.add(verificationWindow),
             category: draft.category,
             recurrence: draft.recurrence,
             experiencePoint: draft.experiencePoint,
             progress: PlanProgress.pending,
+            visibility: draft.visibility,
+            photoProofRequired: draft.photoProofRequired,
             seriesId: isRepeating ? seriesId : null,
           );
         })
@@ -473,9 +576,12 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
         PlanDraft(
           title: last.title,
           scheduledAt: last.scheduledAt,
+          verificationDueAt: last.verificationDueAt,
           category: last.category,
           recurrence: last.recurrence,
           experiencePoint: last.experiencePoint,
+          visibility: last.visibility,
+          photoProofRequired: last.photoProofRequired,
         ),
         seriesId: seriesId,
       );
@@ -503,9 +609,12 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
       PlanDraft(
         title: firstOccurrence.title,
         scheduledAt: firstOccurrence.scheduledAt,
+        verificationDueAt: firstOccurrence.verificationDueAt,
         category: firstOccurrence.category,
         recurrence: firstOccurrence.recurrence,
         experiencePoint: firstOccurrence.experiencePoint,
+        visibility: firstOccurrence.visibility,
+        photoProofRequired: firstOccurrence.photoProofRequired,
       ),
       seriesId: seriesId,
     ).skip(1);
@@ -515,6 +624,10 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
   void _addPlanPost(PlanItem plan, PostOutcome outcome) {
     final generatedId = 'generated-${plan.id}-${outcome.name}';
     if (_posts.any((post) => post.id == generatedId)) return;
+    final completionProof = outcome == PostOutcome.success
+        ? plan.completionProof
+        : null;
+    final proofNote = completionProof?.note.trim();
     _posts.insert(
       0,
       FeedPost(
@@ -536,15 +649,26 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
         isLiked: false,
         isSaved: false,
         streakDays: outcome == PostOutcome.success ? 7 : null,
+        sourcePlanId: plan.id,
+        mediaBytes: completionProof?.mediaBytes,
+        proofNote: proofNote == null || proofNote.isEmpty ? null : proofNote,
       ),
     );
   }
 
   void _removeGeneratedPlanPosts(String planId) {
-    _posts.removeWhere((post) => post.id.startsWith('generated-$planId-'));
+    _posts.removeWhere(
+      (post) =>
+          post.sourcePlanId == planId ||
+          post.id.startsWith('generated-$planId-'),
+    );
   }
 
-  void _announcePlanFailure(PlanItem plan, DateTime sentAt) {
+  void _announcePlanFailure(
+    PlanItem plan,
+    DateTime sentAt, {
+    required bool broadcastToGroups,
+  }) {
     final mentorMessage = MentorMessageService.failureFor(
       plan,
       intensity: _preferences.mentorIntensity,
@@ -579,7 +703,9 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
         isSystem: true,
       ),
     ]);
-    _broadcastFailureToGroups(plan, mentorMessage, sentAt);
+    if (broadcastToGroups) {
+      _broadcastFailureToGroups(plan, mentorMessage, sentAt);
+    }
   }
 
   void _broadcastFailureToGroups(
@@ -640,33 +766,6 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
         );
   }
 
-  void _announcePlanRecovery(PlanItem plan, DateTime sentAt) {
-    final message =
-        '${_currentUser.displayName}님이 늦게라도 ‘${plan.title}’ 계획을 완료했습니다.';
-    final roomIndex = _chatRooms.indexWhere((room) => room.id == 'system-room');
-    if (roomIndex != -1) {
-      final room = _chatRooms[roomIndex];
-      _chatRooms[roomIndex] = room.copyWith(
-        subtitle: message,
-        updatedAt: sentAt,
-        unreadCount: room.unreadCount + 1,
-      );
-    }
-    _messages
-        .putIfAbsent('system-room', () => [])
-        .add(
-          ChatMessage(
-            id: 'recovery-${plan.id}-${sentAt.microsecondsSinceEpoch}',
-            roomId: 'system-room',
-            senderId: 'system',
-            message: message,
-            sentAt: sentAt,
-            isMine: false,
-            isSystem: true,
-          ),
-        );
-  }
-
   MediaKind _mediaKindFor(PlanCategory category) {
     return switch (category) {
       PlanCategory.health => MediaKind.workout,
@@ -686,7 +785,7 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
   }
 
   void _seedData() {
-    final now = DateTime.now();
+    final now = _clock();
     final today = DateTime(now.year, now.month, now.day);
 
     _currentUser = const AppUser(
@@ -954,10 +1053,13 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
           id: 'history-$daysAgo',
           title: didFail ? '저녁 스트레칭 15분' : '아침 루틴 완료',
           scheduledAt: scheduledAt,
+          verificationDueAt: scheduledAt.add(const Duration(hours: 1)),
           category: didFail ? PlanCategory.health : PlanCategory.routine,
           recurrence: '없음',
           experiencePoint: 5,
           progress: didFail ? PlanProgress.failed : PlanProgress.completed,
+          visibility: PlanVisibility.private,
+          photoProofRequired: false,
           completedAt: didFail
               ? null
               : scheduledAt.add(const Duration(minutes: 5)),
@@ -970,10 +1072,13 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
         id: 'plan-water',
         title: '일어나서 물 한 잔',
         scheduledAt: today.add(const Duration(hours: 6, minutes: 30)),
+        verificationDueAt: today.add(const Duration(hours: 7)),
         category: PlanCategory.health,
         recurrence: '매일',
         experiencePoint: 5,
         progress: PlanProgress.completed,
+        visibility: PlanVisibility.private,
+        photoProofRequired: false,
         completedAt: today.add(const Duration(hours: 6, minutes: 28)),
       ),
     );
@@ -982,10 +1087,13 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
         id: 'plan-words',
         title: '영어 단어 30개',
         scheduledAt: today.add(const Duration(hours: 7)),
+        verificationDueAt: today.add(const Duration(hours: 8)),
         category: PlanCategory.study,
         recurrence: '평일',
         experiencePoint: 10,
         progress: PlanProgress.completed,
+        visibility: PlanVisibility.private,
+        photoProofRequired: false,
         completedAt: today.add(const Duration(hours: 6, minutes: 52)),
       ),
     );
@@ -993,11 +1101,23 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
       PlanItem(
         id: 'plan-workout',
         title: '퇴근 후 운동 60분',
-        scheduledAt: today.add(const Duration(hours: 18, minutes: 30)),
+        // 실행 중인 공개 도전 예시가 에뮬레이터에서 언제나 보이도록
+        // 현재 시각을 기준으로 한 안전한 인증 구간을 만듭니다.
+        scheduledAt: now.subtract(const Duration(minutes: 30)),
+        verificationDueAt: now.add(const Duration(hours: 2)),
         category: PlanCategory.health,
         recurrence: '월·수·금',
         experiencePoint: 10,
         progress: PlanProgress.pending,
+        visibility: PlanVisibility.publicChallenge,
+        photoProofRequired: true,
+        startProof: PlanProof(
+          id: 'proof-plan-workout-start',
+          type: PlanProofType.start,
+          recordedAt: now,
+          note: '운동복까지 갈아입고 시작합니다.',
+          sharedToFeed: true,
+        ),
       ),
     );
     _seedPlan(
@@ -1005,10 +1125,13 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
         id: 'plan-diary',
         title: '오늘 회고 5줄 쓰기',
         scheduledAt: today.add(const Duration(hours: 23)),
+        verificationDueAt: today.add(const Duration(hours: 23, minutes: 55)),
         category: PlanCategory.record,
         recurrence: '매일',
         experiencePoint: 5,
         progress: PlanProgress.pending,
+        visibility: PlanVisibility.private,
+        photoProofRequired: false,
       ),
     );
     _sortPlans();
@@ -1016,8 +1139,8 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
     _chatRooms.addAll([
       ChatRoom(
         id: 'system-room',
-        title: '공개처형소',
-        subtitle: '민지님이 아침 러닝에 실패했습니다.',
+        title: 'motive 독설 멘토',
+        subtitle: '오늘 계획을 끝까지 지켜보고 있어요.',
         kind: ChatRoomKind.system,
         memberInitials: const ['M'],
         updatedAt: now,

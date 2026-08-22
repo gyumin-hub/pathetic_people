@@ -38,7 +38,8 @@ abstract interface class AppRepository implements Listenable {
   void addPlan(PlanDraft draft);
   void updatePlan(String planId, PlanDraft draft);
   void deletePlan(String planId);
-  void togglePlanCompletion(String planId);
+  void startPlan(String planId, PlanProofDraft proofDraft);
+  void completePlan(String planId, PlanProofDraft proofDraft);
   void markOverduePlans(DateTime now);
 
   void readRoom(String roomId);

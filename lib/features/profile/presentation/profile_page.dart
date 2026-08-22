@@ -333,7 +333,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         const _SettingsSectionLabel(label: '알림 및 공개 범위'),
                         _SettingsSwitchTile(
                           title: '푸시 알림',
-                          description: '계획 마감과 소셜 활동 알림',
+                          description: '완료 인증 시간과 소셜 활동 알림',
                           value: widget.viewModel.preferences.pushEnabled,
                           onChanged: (value) {
                             widget.viewModel.updatePreferences(
@@ -400,7 +400,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           title: '도움말',
                           onTap: () => _closeSheetWithNotice(
                             sheetContext,
-                            '계획을 등록하고 완료 버튼을 누르세요. 마감되면 실패 기록과 독설이 자동 생성돼요.',
+                            '계획을 등록하고 완료 인증을 남기세요. 정해둔 시간이 지나면 실패 기록과 독설이 자동 생성돼요.',
                           ),
                         ),
                       ],

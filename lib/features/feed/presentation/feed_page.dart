@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_palette.dart';
-import '../../../domain/models/app_user.dart';
 import '../../../domain/models/feed_post.dart';
 import '../view_models/feed_view_model.dart';
 import 'widgets/comments_sheet.dart';
@@ -31,6 +30,7 @@ class FeedPage extends StatelessWidget {
           listenable: viewModel,
           builder: (context, _) {
             final posts = viewModel.posts;
+            final activeChallenges = viewModel.activePublicChallenges;
             return CustomScrollView(
               key: PageStorageKey<String>('feed-${viewModel.scope.name}'),
               slivers: [
@@ -42,10 +42,9 @@ class FeedPage extends StatelessWidget {
                 ),
                 SliverToBoxAdapter(
                   child: FeedStoryBar(
-                    currentUser: viewModel.currentUser,
-                    users: viewModel.storyUsers,
-                    onCurrentUserTap: onOpenPlanner,
-                    onUserTap: (user) => _showStory(context, user),
+                    plans: activeChallenges,
+                    onPlanTap: (_) => onOpenPlanner(),
+                    onCreateTap: onOpenPlanner,
                   ),
                 ),
                 SliverToBoxAdapter(
@@ -93,42 +92,6 @@ class FeedPage extends StatelessWidget {
           },
         ),
       ),
-    );
-  }
-
-  void _showStory(BuildContext context, AppUser user) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${user.displayName}의 오늘',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 8),
-                Text(user.bio, style: Theme.of(context).textTheme.bodyLarge),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    const Icon(Icons.bolt_rounded, color: AppPalette.blue),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Lv.${user.level} · 팔로워 ${user.followers}명',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 

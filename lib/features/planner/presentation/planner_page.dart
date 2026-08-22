@@ -6,6 +6,7 @@ import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../domain/models/plan_item.dart';
 import '../view_models/planner_view_model.dart';
+import 'plan_detail_sheet.dart';
 import 'plan_form_sheet.dart';
 import 'planner_ui_extensions.dart';
 
@@ -112,9 +113,11 @@ class _PlannerPageState extends State<PlannerPage> {
                             background: const _DeleteBackground(),
                             child: _PlanCard(
                               plan: plan,
-                              onToggle: () {
-                                widget.viewModel.toggleCompletion(plan.id);
-                              },
+                              onTap: () => _openPlanDetail(plan),
+                              onCompletionTap: () => _openPlanDetail(
+                                plan,
+                                initialProofType: PlanProofType.completion,
+                              ),
                               onEdit: () => _openEditPlan(plan),
                               onDelete: () => _requestDelete(plan),
                             ),
@@ -180,6 +183,10 @@ class _PlannerPageState extends State<PlannerPage> {
   }
 
   Future<void> _openEditPlan(PlanItem plan) async {
+    if (plan.progress != PlanProgress.pending) {
+      _showMessage('완료되거나 실패한 계획은 기록을 보호하기 위해 수정할 수 없어요.');
+      return;
+    }
     final saved = await PlanFormSheet.show(
       context,
       viewModel: widget.viewModel,
@@ -190,6 +197,18 @@ class _PlannerPageState extends State<PlannerPage> {
       return;
     }
     _showMessage('계획을 수정했어요.');
+  }
+
+  Future<void> _openPlanDetail(
+    PlanItem plan, {
+    PlanProofType? initialProofType,
+  }) {
+    return PlanDetailSheet.show(
+      context,
+      plan: plan,
+      viewModel: widget.viewModel,
+      initialProofType: initialProofType,
+    );
   }
 
   Future<void> _requestDelete(PlanItem plan) async {
@@ -743,13 +762,15 @@ enum _PlanMenuAction { edit, delete }
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
-    required this.onToggle,
+    required this.onTap,
+    required this.onCompletionTap,
     required this.onEdit,
     required this.onDelete,
   });
 
   final PlanItem plan;
-  final VoidCallback onToggle;
+  final VoidCallback onTap;
+  final VoidCallback onCompletionTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -771,116 +792,151 @@ class _PlanCard extends StatelessWidget {
         ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CompletionButton(
-              isCompleted: isCompleted,
-              isFailed: plan.progress == PlanProgress.failed,
-              onPressed: onToggle,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: plan.category.softColor,
-                          borderRadius: BorderRadius.circular(7),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 6, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _CompletionButton(
+                progress: plan.progress,
+                onPressed: onCompletionTap,
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 24,
+                          height: 24,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: plan.category.softColor,
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                          child: Icon(
+                            plan.category.icon,
+                            size: 14,
+                            color: plan.category.color,
+                          ),
                         ),
-                        child: Icon(
-                          plan.category.icon,
-                          size: 14,
-                          color: plan.category.color,
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            '${AppDateUtils.hourMinute(plan.scheduledAt)} 시작 · ${plan.category.label}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        '${AppDateUtils.hourMinute(plan.scheduledAt)} · ${plan.category.label}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    plan.title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: isCompleted ? AppPalette.muted : AppPalette.ink,
-                      decoration: isCompleted
-                          ? TextDecoration.lineThrough
-                          : null,
-                      decorationColor: AppPalette.muted,
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _StatusBadge(progress: plan.progress),
-                      const SizedBox(width: 8),
-                      Text(
-                        plan.recurrence == '없음' ? '반복 없음' : plan.recurrence,
-                        style: Theme.of(context).textTheme.bodySmall,
+                    const SizedBox(height: 8),
+                    Text(
+                      plan.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: isCompleted ? AppPalette.muted : AppPalette.ink,
+                        decoration: isCompleted
+                            ? TextDecoration.lineThrough
+                            : null,
+                        decorationColor: AppPalette.muted,
                       ),
-                      const Spacer(),
-                      Text(
-                        '+${plan.experiencePoint} XP',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppPalette.blue,
-                          fontWeight: FontWeight.w700,
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${AppDateUtils.hourMinute(plan.verificationDueAt)} 완료 인증',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: plan.progress == PlanProgress.failed
+                            ? AppPalette.red
+                            : AppPalette.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _StatusBadge(progress: plan.progress),
+                        _PlanMetaBadge(
+                          icon: plan.visibility.icon,
+                          label: plan.visibility.label,
+                          color: plan.visibility.color,
+                          backgroundColor: plan.visibility.softColor,
                         ),
+                        if (plan.photoProofRequired)
+                          const _PlanMetaBadge(
+                            icon: Icons.add_a_photo_outlined,
+                            label: '사진 필수',
+                            color: AppPalette.muted,
+                            backgroundColor: AppPalette.surfaceStrong,
+                          ),
+                        Text(
+                          plan.recurrence == '없음' ? '반복 없음' : plan.recurrence,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        Text(
+                          '+${plan.experiencePoint} XP',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: AppPalette.blue,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<_PlanMenuAction>(
+                tooltip: '계획 메뉴',
+                icon: const Icon(
+                  Icons.more_horiz_rounded,
+                  color: AppPalette.muted,
+                ),
+                onSelected: (action) {
+                  switch (action) {
+                    case _PlanMenuAction.edit:
+                      onEdit();
+                    case _PlanMenuAction.delete:
+                      onDelete();
+                  }
+                },
+                itemBuilder: (context) => [
+                  if (plan.progress == PlanProgress.pending)
+                    const PopupMenuItem(
+                      value: _PlanMenuAction.edit,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.edit_outlined),
+                        title: Text('수정'),
                       ),
-                    ],
+                    ),
+                  const PopupMenuItem(
+                    value: _PlanMenuAction.delete,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        Icons.delete_outline_rounded,
+                        color: AppPalette.red,
+                      ),
+                      title: Text(
+                        '삭제',
+                        style: TextStyle(color: AppPalette.red),
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
-            PopupMenuButton<_PlanMenuAction>(
-              tooltip: '계획 메뉴',
-              icon: const Icon(
-                Icons.more_horiz_rounded,
-                color: AppPalette.muted,
-              ),
-              onSelected: (action) {
-                switch (action) {
-                  case _PlanMenuAction.edit:
-                    onEdit();
-                  case _PlanMenuAction.delete:
-                    onDelete();
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: _PlanMenuAction.edit,
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.edit_outlined),
-                    title: Text('수정'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: _PlanMenuAction.delete,
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      Icons.delete_outline_rounded,
-                      color: AppPalette.red,
-                    ),
-                    title: Text('삭제', style: TextStyle(color: AppPalette.red)),
-                  ),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -888,18 +944,15 @@ class _PlanCard extends StatelessWidget {
 }
 
 class _CompletionButton extends StatelessWidget {
-  const _CompletionButton({
-    required this.isCompleted,
-    required this.isFailed,
-    required this.onPressed,
-  });
+  const _CompletionButton({required this.progress, required this.onPressed});
 
-  final bool isCompleted;
-  final bool isFailed;
+  final PlanProgress progress;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
+    final isCompleted = progress == PlanProgress.completed;
+    final isFailed = progress == PlanProgress.failed;
     final color = isCompleted
         ? AppPalette.green
         : isFailed
@@ -908,7 +961,11 @@ class _CompletionButton extends StatelessWidget {
     return Semantics(
       button: true,
       checked: isCompleted,
-      label: isCompleted ? '달성 취소' : '계획 달성 처리',
+      label: isCompleted
+          ? '달성 상세 보기'
+          : isFailed
+          ? '미달성 상세 보기'
+          : '완료 인증 열기',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -966,6 +1023,46 @@ class _StatusBadge extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+class _PlanMetaBadge extends StatelessWidget {
+  const _PlanMetaBadge({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.backgroundColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

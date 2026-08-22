@@ -66,3 +66,49 @@ extension PlanProgressUi on PlanProgress {
     };
   }
 }
+
+extension PlanVisibilityUi on PlanVisibility {
+  String get label {
+    return switch (this) {
+      PlanVisibility.private => '개인 계획',
+      PlanVisibility.publicChallenge => '공개 도전',
+    };
+  }
+
+  String get description {
+    return switch (this) {
+      PlanVisibility.private => '나만 보고 실행해요.',
+      PlanVisibility.publicChallenge => '성공·실패 결과가 공개될 수 있어요.',
+    };
+  }
+
+  IconData get icon {
+    return switch (this) {
+      PlanVisibility.private => Icons.lock_outline_rounded,
+      PlanVisibility.publicChallenge => Icons.public_rounded,
+    };
+  }
+
+  Color get color {
+    return switch (this) {
+      PlanVisibility.private => AppPalette.muted,
+      PlanVisibility.publicChallenge => AppPalette.blue,
+    };
+  }
+
+  Color get softColor {
+    return switch (this) {
+      PlanVisibility.private => AppPalette.surfaceStrong,
+      PlanVisibility.publicChallenge => AppPalette.blueSoft,
+    };
+  }
+}
+
+extension PlanProofTypeUi on PlanProofType {
+  String get label {
+    return switch (this) {
+      PlanProofType.start => '시작 인증',
+      PlanProofType.completion => '완료 인증',
+    };
+  }
+}

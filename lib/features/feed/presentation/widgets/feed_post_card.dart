@@ -90,15 +90,7 @@ class FeedPostCard extends StatelessWidget {
               ],
             ),
           ),
-          MediaArtwork(
-            kind: post.mediaKind,
-            headline: post.mediaHeadline,
-            outcome: post.outcome,
-            label: post.streakDays == null
-                ? post.planTitle
-                : '${post.streakDays}일 연속 · ${post.planTitle}',
-            aspectRatio: 4 / 5,
-          ),
+          _PostMedia(post: post),
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
             child: Row(
@@ -141,6 +133,21 @@ class FeedPostCard extends StatelessWidget {
                   '좋아요 ${_formatCount(post.likes)}개',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
+                if (post.proofNote?.trim().isNotEmpty == true) ...[
+                  const SizedBox(height: 7),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${author.displayName}  ',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        TextSpan(text: post.proofNote!.trim()),
+                      ],
+                    ),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
                 const SizedBox(height: 7),
                 Text.rich(
                   TextSpan(
@@ -206,6 +213,87 @@ class FeedPostCard extends StatelessWidget {
       buffer.write(digits[index]);
     }
     return buffer.toString();
+  }
+}
+
+class _PostMedia extends StatelessWidget {
+  const _PostMedia({required this.post});
+
+  final FeedPost post;
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaBytes = post.mediaBytes;
+    if (mediaBytes == null) {
+      return MediaArtwork(
+        kind: post.mediaKind,
+        headline: post.mediaHeadline,
+        outcome: post.outcome,
+        label: post.streakDays == null
+            ? post.planTitle
+            : '${post.streakDays}일 연속 · ${post.planTitle}',
+        aspectRatio: 4 / 5,
+      );
+    }
+
+    return AspectRatio(
+      aspectRatio: 4 / 5,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.memory(
+            mediaBytes,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            cacheWidth: 1200,
+            errorBuilder: (_, _, _) => MediaArtwork(
+              kind: post.mediaKind,
+              headline: post.mediaHeadline,
+              outcome: post.outcome,
+              label: post.planTitle,
+              aspectRatio: 4 / 5,
+            ),
+          ),
+          Positioned(
+            left: 12,
+            bottom: 12,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.58),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.camera_alt_outlined,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      post.outcome == PostOutcome.success
+                          ? '완료 사진 인증'
+                          : '실패 인증 사진',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

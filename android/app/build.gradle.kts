@@ -24,7 +24,8 @@ android {
         applicationId = "com.gymin.pathetic_people"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // image_picker 1.2.x supports Android API 24 and above.
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

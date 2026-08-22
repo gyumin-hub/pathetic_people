@@ -29,6 +29,13 @@ class PlannerViewModel extends RepositoryViewModel {
         .toList(growable: false);
   }
 
+  PlanItem? planById(String planId) {
+    for (final plan in repository.plans) {
+      if (plan.id == planId) return plan;
+    }
+    return null;
+  }
+
   int get completedCount {
     return selectedPlans
         .where((plan) => plan.progress == PlanProgress.completed)
@@ -116,9 +123,13 @@ class PlannerViewModel extends RepositoryViewModel {
 
   void deletePlan(String planId) => repository.deletePlan(planId);
 
-  void toggleCompletion(String planId) {
-    repository.togglePlanCompletion(planId);
+  void startPlan(String planId, PlanProofDraft proofDraft) {
+    repository.startPlan(planId, proofDraft);
+  }
+
+  void completePlan(String planId, PlanProofDraft proofDraft) {
     repository.markOverduePlans(DateTime.now());
+    repository.completePlan(planId, proofDraft);
   }
 
   void evaluateOverduePlans() {

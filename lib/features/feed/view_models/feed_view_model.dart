@@ -2,6 +2,7 @@ import '../../../core/view_models/repository_view_model.dart';
 import '../../../domain/models/app_user.dart';
 import '../../../domain/models/chat.dart';
 import '../../../domain/models/feed_post.dart';
+import '../../../domain/models/plan_item.dart';
 
 enum FeedScope { following, recommended }
 
@@ -23,11 +24,23 @@ class FeedViewModel extends RepositoryViewModel {
         .toList(growable: false);
   }
 
-  List<AppUser> get storyUsers {
-    return repository.users
-        .where((user) => user.id != repository.currentUser.id)
-        .take(6)
+  List<PlanItem> get activePublicChallenges {
+    final now = DateTime.now();
+    final challenges = repository.plans
+        .where((plan) {
+          return plan.progress == PlanProgress.pending &&
+              plan.visibility == PlanVisibility.publicChallenge &&
+              !plan.scheduledAt.isAfter(now) &&
+              plan.verificationDueAt.isAfter(now) &&
+              plan.startProof?.sharedToFeed == true;
+        })
         .toList(growable: false);
+    challenges.sort((a, b) {
+      final aRecordedAt = a.startProof?.recordedAt ?? a.scheduledAt;
+      final bRecordedAt = b.startProof?.recordedAt ?? b.scheduledAt;
+      return bRecordedAt.compareTo(aRecordedAt);
+    });
+    return challenges;
   }
 
   AppUser get currentUser => repository.currentUser;
