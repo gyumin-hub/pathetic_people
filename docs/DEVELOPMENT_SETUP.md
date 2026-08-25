@@ -1,5 +1,12 @@
 # Mac·Windows 개발환경 준비
 
+관련 기준 문서:
+
+- [제품·저장소 전체 기준](PROJECT_CONTEXT.md)
+- [Flutter 앱 아키텍처](APP_ARCHITECTURE.md)
+- 서버 저장소의 `docs/SERVER_ARCHITECTURE.md`
+- 서버 저장소의 `docs/DATABASE_SCHEMA.md`
+
 이 프로젝트는 Flutter 앱과 Spring Boot 서버를 **서로 다른 Git 저장소**로 관리합니다.
 두 저장소를 같은 상위 폴더 아래에 나란히 두면 경로를 찾기 쉽습니다.
 
@@ -12,14 +19,35 @@ IdeaProjects 또는 C:\dev
 Mac과 Windows의 MySQL 데이터는 서로 자동으로 복사되지 않습니다. 대신 서버 저장소의
 Flyway SQL을 Git으로 공유해 테이블 구조만 같게 유지합니다.
 
-## 1. 필요한 프로그램
+## 1. Codex 프로젝트 지침도 Git으로 받기
+
+각 저장소 루트의 `AGENTS.md`는 그 저장소를 Codex에서 열었을 때만 적용되는 프로젝트
+지침입니다. Codex 계정 전체 설정이나 홈 디렉터리의 전역 지침에는 이 프로젝트 내용을
+넣지 않습니다.
+
+다른 PC에서는 별도 복사 없이 다음 순서로 사용합니다.
+
+1. 앱과 서버 저장소를 clone 또는 pull합니다.
+2. Codex에서 수정할 **저장소 루트**를 엽니다.
+3. 새 Codex 작업을 시작합니다.
+4. Codex가 해당 저장소의 `AGENTS.md`와 연결된 `docs`를 참고합니다.
+
+따라서 같은 Codex 계정을 쓰더라도 이 Git 저장소를 열지 않은 다른 프로젝트에는 이 규칙이
+적용되지 않습니다. 프로젝트 규칙을 바꾸면 코드처럼 commit/push 해야 다른 PC가 pull할 수
+있습니다. 비밀번호·토큰·SDK 절대경로는 `AGENTS.md`나 `docs`에 넣지 않습니다.
+
+## 2. 필요한 프로그램
 
 - Git
-- Flutter `3.44.0` 이상과 Dart `3.12.0` 이상
+- Flutter 팀 기준 `3.47.1`과 Dart `3.13.1`
+  - 저장소가 허용하는 최소값은 Flutter `3.44.0`, Dart `3.12.0`입니다.
+  - 두 PC에서 팀 기준 버전을 맞추면 빌드 차이를 줄일 수 있습니다.
 - Java Development Kit(JDK) 17 이상
+  - 앱과 서버의 컴파일 언어 수준은 Java 17입니다.
+  - 현재 Mac 터미널 JDK는 26.0.2지만 Windows가 이를 똑같이 설치할 필요는 없습니다.
 - Android Studio와 Android 에뮬레이터
 - MySQL 8
-  - 현재 Mac 프로젝트 전용 DB: MySQL 8.4 LTS
+  - 현재 Mac 프로젝트 전용 DB: MySQL 8.4.11
   - 현재 Windows PC: 설치되어 있는 MySQL 8.0을 그대로 사용 가능
 
 설치 후 터미널 또는 PowerShell에서 확인합니다.
@@ -41,7 +69,10 @@ flutter doctor --android-licenses
 Windows 데스크톱 앱을 만들지 않는다면 Visual Studio 관련 경고는 Android 실행에 영향을
 주지 않습니다. iOS 앱 빌드와 iOS Simulator 실행은 Mac과 Xcode가 필요합니다.
 
-## 2. 두 저장소 받기와 업데이트하기
+2026-08-25 기준 앱 Android 설정은 compile SDK 37, target SDK 36, min SDK 24입니다.
+Flutter 앱의 Gradle은 8.14, 서버 Gradle은 9.4.1입니다.
+
+## 3. 두 저장소 받기와 업데이트하기
 
 처음 한 번만 두 저장소를 clone(원격 저장소를 내 컴퓨터로 복사)합니다.
 
@@ -88,7 +119,7 @@ git pull --ff-only
 `git status`에 내가 수정한 파일이 나온다면 바로 pull하지 말고 먼저 커밋하거나 안전하게
 보관합니다. 앱만 pull하고 서버를 빼먹으면 API 형식이나 DB 구조가 맞지 않을 수 있습니다.
 
-## 3. MySQL 준비
+## 4. MySQL 준비
 
 ### 현재 Mac: 프로젝트 전용 MySQL 8.4
 
@@ -143,7 +174,7 @@ EXIT;
 Mac과 PC의 `pathetic_people` 안에 저장되는 회원·계획 데이터는 서로 다릅니다. 이것은
 정상입니다. Git과 Flyway가 맞추는 것은 데이터가 아니라 테이블·컬럼 구조입니다.
 
-## 4. 서버 비밀 설정 만들기
+## 5. 서버 비밀 설정 만들기
 
 서버는 DB 비밀번호와 JWT(JSON Web Token, 로그인 토큰) 서명 키를 별도 로컬 파일에서
 읽습니다. 예시 파일을 복사해 실제 설정 파일을 만듭니다.
@@ -188,7 +219,7 @@ jwt.secret=YOUR_32_BYTE_OR_LONGER_RANDOM_SECRET
 즉, 실행 방법 같은 공통 정보는 이 문서에 기록하고, 비밀번호 자체만 Git에서 제외된 로컬
 secret 파일에 둡니다.
 
-## 5. Flyway로 DB 구조 맞추기
+## 6. Flyway로 DB 구조 맞추기
 
 Flyway는 서버가 시작될 때 버전 순서대로 SQL 파일을 한 번씩 실행해 DB 구조를 맞추는
 도구입니다. 파일 위치는 서버 저장소의 다음 경로입니다.
@@ -228,7 +259,7 @@ ORDER BY installed_rank;
 체크섬 오류가 발생했을 때 migration 파일이나 `flyway_schema_history`를 임의로 지우지 말고
 먼저 어떤 적용 완료 파일이 변경됐는지 확인합니다.
 
-## 6. Spring Boot 서버 실행
+## 7. Spring Boot 서버 실행
 
 MySQL이 먼저 실행 중이어야 합니다.
 
@@ -256,7 +287,7 @@ curl -i http://127.0.0.1:8080/api/auth/me
 
 서버는 실행한 터미널에서 `Ctrl+C`를 눌러 종료합니다.
 
-## 7. Flutter 앱의 서버 주소
+## 8. Flutter 앱의 서버 주소
 
 앱은 빌드 시 `API_BASE_URL`이라는 값으로 서버 주소를 받습니다. 주소 끝의 `/`는 넣지
 않는 것을 권장합니다.
@@ -336,7 +367,7 @@ iPhone에서는 처음 연결할 때 motive의 로컬 네트워크 접근 확인
 Mac 서버와 통신하려면 `허용`을 선택합니다. 이 안내 문구는 iOS의
 `NSLocalNetworkUsageDescription` 설정에 포함되어 있습니다.
 
-## 8. 매번 실행하는 순서
+## 9. 매번 실행하는 순서
 
 처음 설정을 끝낸 뒤에는 다음 순서만 지키면 됩니다.
 
@@ -362,7 +393,7 @@ Flutter 입력
 -> Flutter 화면 갱신
 ```
 
-## 9. 자주 생기는 포트 충돌
+## 10. 자주 생기는 포트 충돌
 
 ### `3306` 충돌
 
@@ -404,7 +435,7 @@ netstat -ano | findstr :8080
 기존 Spring 실행 창에서 `Ctrl+C`를 누르거나 IntelliJ의 Stop 버튼으로 정상 종료한 뒤 다시
 실행합니다. 포트를 임의로 바꾸면 Flutter의 `API_BASE_URL`도 같은 포트로 바꿔야 합니다.
 
-## 10. Git 체크리스트
+## 11. Git 체크리스트
 
 ### Git에 올려야 하는 것
 

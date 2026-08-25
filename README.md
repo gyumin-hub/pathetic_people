@@ -28,6 +28,13 @@ Flutter 앱과 Spring Boot 서버는 별도 저장소입니다. Mac·Windows에�
 받는 방법, MySQL 준비, 비밀 설정, Flyway 규칙, 에뮬레이터별 API 주소는
 [Mac·Windows 개발환경 준비](docs/DEVELOPMENT_SETUP.md)에 정리되어 있습니다.
 
+프로젝트 구조와 버전은 Git 문서로 관리합니다. 루트 `AGENTS.md`는 이 저장소를 Codex에서
+열었을 때만 적용되는 **프로젝트 범위 지침**이며, Codex 계정 전체의 전역 지침이 아닙니다.
+
+- [제품·저장소 전체 기준](docs/PROJECT_CONTEXT.md)
+- [Flutter 앱 아키텍처](docs/APP_ARCHITECTURE.md)
+- [Mac·Windows 개발환경 준비](docs/DEVELOPMENT_SETUP.md)
+
 실제 DB 비밀번호나 JWT 키는 README나 일반 메모장에 적지 않고, Git에서 제외되는 서버의
 `application-secret.properties`에만 저장합니다.
 
