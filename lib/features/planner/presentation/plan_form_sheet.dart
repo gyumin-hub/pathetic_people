@@ -7,10 +7,18 @@ import '../view_models/planner_view_model.dart';
 import 'planner_ui_extensions.dart';
 
 class PlanFormSheet extends StatefulWidget {
-  const PlanFormSheet({required this.initialDate, this.initialPlan, super.key});
+  const PlanFormSheet({
+    required this.initialDate,
+    required this.onSubmit,
+    required this.supportsMediaUpload,
+    this.initialPlan,
+    super.key,
+  });
 
   final DateTime initialDate;
   final PlanItem? initialPlan;
+  final Future<String?> Function(PlanDraft draft) onSubmit;
+  final bool supportsMediaUpload;
 
   static Future<bool> show(
     BuildContext context, {
@@ -18,21 +26,27 @@ class PlanFormSheet extends StatefulWidget {
     required DateTime initialDate,
     PlanItem? initialPlan,
   }) async {
-    final draft = await showModalBottomSheet<PlanDraft>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) =>
-          PlanFormSheet(initialDate: initialDate, initialPlan: initialPlan),
-    );
-
-    if (draft == null) return false;
-    if (initialPlan == null) {
-      viewModel.addPlan(draft);
-    } else {
-      viewModel.updatePlan(initialPlan.id, draft);
-    }
-    return true;
+    return await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          isDismissible: false,
+          enableDrag: false,
+          builder: (context) => PlanFormSheet(
+            initialDate: initialDate,
+            initialPlan: initialPlan,
+            supportsMediaUpload: viewModel.supportsProofMediaUpload,
+            onSubmit: (draft) async {
+              final saved = initialPlan == null
+                  ? await viewModel.addPlan(draft)
+                  : await viewModel.updatePlan(initialPlan.id, draft);
+              if (saved) return null;
+              return viewModel.submitErrorMessage ??
+                  '계획을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+            },
+          ),
+        ) ??
+        false;
   }
 
   @override
@@ -55,6 +69,8 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
   late PlanVisibility _visibility;
   late bool _photoProofRequired;
   bool _showTimeError = false;
+  bool _isSubmitting = false;
+  String? _submitErrorMessage;
 
   bool get _isEditing => widget.initialPlan != null;
 
@@ -98,246 +114,277 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
       ..._recurrenceOptions,
       _recurrence,
     }.toList(growable: false);
-    final hasInvalidWindow = !_verificationDueAt.isAfter(_scheduledAt);
+    final hasInvalidWindow =
+        !_verificationDueAt.isAfter(_scheduledAt) ||
+        !_verificationDueAt.isAfter(DateTime.now());
 
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: SizedBox(
-        height: sheetHeight,
-        child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: Form(
-            key: _formKey,
-            autovalidateMode: AutovalidateMode.onUserInteraction,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _SheetHeader(isEditing: _isEditing),
-                const SizedBox(height: 24),
-                const _FieldLabel('계획 이름'),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _titleController,
-                  maxLength: 40,
-                  textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(
-                    hintText: '예: 퇴근 후 운동 60분',
-                    counterText: '',
-                  ),
-                  validator: (value) {
-                    final title = value?.trim() ?? '';
-                    if (title.isEmpty) return '계획 이름을 입력해 주세요.';
-                    if (title.length < 2) return '2자 이상 입력해 주세요.';
-                    return null;
-                  },
-                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
-                ),
-                const SizedBox(height: 22),
-                const _FieldLabel('시작 예정'),
-                const SizedBox(height: 6),
-                Text(
-                  '이 시간부터 계획을 실행할 수 있어요.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: _PickerButton(
-                        icon: Icons.calendar_today_rounded,
-                        label: AppDateUtils.fullDate(_startDate),
-                        onTap: _pickStartDate,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 2,
-                      child: _PickerButton(
-                        icon: Icons.schedule_rounded,
-                        label: AppDateUtils.hourMinute(_scheduledAt),
-                        onTap: _pickStartTime,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 22),
-                const _FieldLabel('완료 인증 시간'),
-                const SizedBox(height: 6),
-                Text(
-                  '이 시간 안에 완료 인증을 남겨야 달성으로 기록돼요.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: _PickerButton(
-                        icon: Icons.event_available_outlined,
-                        label: AppDateUtils.fullDate(_dueDate),
-                        onTap: _pickDueDate,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 2,
-                      child: _PickerButton(
-                        icon: Icons.timer_outlined,
-                        label: AppDateUtils.hourMinute(_verificationDueAt),
-                        onTap: _pickDueTime,
-                      ),
-                    ),
-                  ],
-                ),
-                if (_showTimeError && hasInvalidWindow) ...[
+    return PopScope(
+      canPop: !_isSubmitting,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: SizedBox(
+          height: sheetHeight,
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            child: Form(
+              key: _formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _SheetHeader(isEditing: _isEditing, canClose: !_isSubmitting),
+                  const SizedBox(height: 24),
+                  const _FieldLabel('계획 이름'),
                   const SizedBox(height: 8),
-                  const Text(
-                    '완료 인증 시간은 시작 예정보다 뒤여야 해요.',
-                    style: TextStyle(
-                      color: AppPalette.red,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                  TextFormField(
+                    controller: _titleController,
+                    maxLength: 40,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      hintText: '예: 퇴근 후 운동 60분',
+                      counterText: '',
+                    ),
+                    validator: (value) {
+                      final title = value?.trim() ?? '';
+                      if (title.isEmpty) return '계획 이름을 입력해 주세요.';
+                      if (title.length < 2) return '2자 이상 입력해 주세요.';
+                      return null;
+                    },
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
+                  ),
+                  const SizedBox(height: 22),
+                  const _FieldLabel('시작 예정'),
+                  const SizedBox(height: 6),
+                  Text(
+                    '이 시간부터 계획을 실행할 수 있어요.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _PickerButton(
+                          icon: Icons.calendar_today_rounded,
+                          label: AppDateUtils.fullDate(_startDate),
+                          onTap: _pickStartDate,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: _PickerButton(
+                          icon: Icons.schedule_rounded,
+                          label: AppDateUtils.hourMinute(_scheduledAt),
+                          onTap: _pickStartTime,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  const _FieldLabel('완료 인증 시간'),
+                  const SizedBox(height: 6),
+                  Text(
+                    '이 시간 안에 완료 인증을 남겨야 달성으로 기록돼요.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _PickerButton(
+                          icon: Icons.event_available_outlined,
+                          label: AppDateUtils.fullDate(_dueDate),
+                          onTap: _pickDueDate,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: _PickerButton(
+                          icon: Icons.timer_outlined,
+                          label: AppDateUtils.hourMinute(_verificationDueAt),
+                          onTap: _pickDueTime,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_showTimeError && hasInvalidWindow) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      '완료 인증 시간은 시작 예정보다 뒤이고 현재 이후여야 해요.',
+                      style: TextStyle(
+                        color: AppPalette.red,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 22),
+                  const _FieldLabel('공개 범위'),
+                  const SizedBox(height: 8),
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: PlanVisibility.values
+                          .map((visibility) {
+                            return Expanded(
+                              child: Padding(
+                                padding: EdgeInsets.only(
+                                  right: visibility == PlanVisibility.private
+                                      ? 8
+                                      : 0,
+                                ),
+                                child: _VisibilityCard(
+                                  visibility: visibility,
+                                  isSelected: _visibility == visibility,
+                                  onTap: () =>
+                                      setState(() => _visibility = visibility),
+                                ),
+                              ),
+                            );
+                          })
+                          .toList(growable: false),
                     ),
                   ),
-                ],
-                const SizedBox(height: 22),
-                const _FieldLabel('공개 범위'),
-                const SizedBox(height: 8),
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: PlanVisibility.values
-                        .map((visibility) {
-                          return Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                right: visibility == PlanVisibility.private
-                                    ? 8
-                                    : 0,
-                              ),
-                              child: _VisibilityCard(
-                                visibility: visibility,
-                                isSelected: _visibility == visibility,
-                                onTap: () =>
-                                    setState(() => _visibility = visibility),
-                              ),
+                  if (_visibility == PlanVisibility.publicChallenge) ...[
+                    const SizedBox(height: 10),
+                    const _PublicWarning(),
+                  ],
+                  const SizedBox(height: 12),
+                  _PhotoProofSwitch(
+                    value: _photoProofRequired,
+                    onChanged: widget.supportsMediaUpload
+                        ? (value) {
+                            setState(() => _photoProofRequired = value);
+                          }
+                        : null,
+                    unavailableMessage: widget.supportsMediaUpload
+                        ? null
+                        : '사진 업로드 API가 연결된 뒤 사용할 수 있어요.',
+                  ),
+                  const SizedBox(height: 22),
+                  const _FieldLabel('카테고리'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: PlanCategory.values
+                        .map((category) {
+                          return ChoiceChip(
+                            avatar: Icon(
+                              category.icon,
+                              size: 17,
+                              color: _category == category
+                                  ? category.color
+                                  : AppPalette.muted,
                             ),
+                            label: Text(category.label),
+                            selected: _category == category,
+                            selectedColor: category.softColor,
+                            side: BorderSide(
+                              color: _category == category
+                                  ? category.color
+                                  : AppPalette.line,
+                            ),
+                            showCheckmark: false,
+                            onSelected: (_) =>
+                                setState(() => _category = category),
                           );
                         })
                         .toList(growable: false),
                   ),
-                ),
-                if (_visibility == PlanVisibility.publicChallenge) ...[
-                  const SizedBox(height: 10),
-                  const _PublicWarning(),
-                ],
-                const SizedBox(height: 12),
-                _PhotoProofSwitch(
-                  value: _photoProofRequired,
-                  onChanged: (value) {
-                    setState(() => _photoProofRequired = value);
-                  },
-                ),
-                const SizedBox(height: 22),
-                const _FieldLabel('카테고리'),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: PlanCategory.values
-                      .map((category) {
-                        return ChoiceChip(
-                          avatar: Icon(
-                            category.icon,
-                            size: 17,
-                            color: _category == category
-                                ? category.color
-                                : AppPalette.muted,
-                          ),
-                          label: Text(category.label),
-                          selected: _category == category,
-                          selectedColor: category.softColor,
-                          side: BorderSide(
-                            color: _category == category
-                                ? category.color
-                                : AppPalette.line,
-                          ),
-                          showCheckmark: false,
-                          onSelected: (_) =>
-                              setState(() => _category = category),
-                        );
-                      })
-                      .toList(growable: false),
-                ),
-                const SizedBox(height: 22),
-                const _FieldLabel('반복'),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: recurrenceOptions
-                      .map((recurrence) {
-                        return ChoiceChip(
-                          label: Text(recurrence),
-                          selected: _recurrence == recurrence,
-                          selectedColor: AppPalette.blueSoft,
-                          side: BorderSide(
-                            color: _recurrence == recurrence
-                                ? AppPalette.blue
-                                : AppPalette.line,
-                          ),
-                          showCheckmark: false,
-                          onSelected: (_) =>
-                              setState(() => _recurrence = recurrence),
-                        );
-                      })
-                      .toList(growable: false),
-                ),
-                const SizedBox(height: 22),
-                const _FieldLabel('달성 경험치'),
-                const SizedBox(height: 4),
-                Text(
-                  '어려운 계획일수록 높게 설정하세요.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _experienceOptions
-                      .map((point) {
-                        return ChoiceChip(
-                          label: Text('+$point XP'),
-                          selected: _experiencePoint == point,
-                          selectedColor: AppPalette.blueSoft,
-                          side: BorderSide(
-                            color: _experiencePoint == point
-                                ? AppPalette.blue
-                                : AppPalette.line,
-                          ),
-                          showCheckmark: false,
-                          onSelected: (_) =>
-                              setState(() => _experiencePoint = point),
-                        );
-                      })
-                      .toList(growable: false),
-                ),
-                const SizedBox(height: 30),
-                FilledButton(
-                  onPressed: _submit,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                  const SizedBox(height: 22),
+                  const _FieldLabel('반복'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: recurrenceOptions
+                        .map((recurrence) {
+                          return ChoiceChip(
+                            label: Text(recurrence),
+                            selected: _recurrence == recurrence,
+                            selectedColor: AppPalette.blueSoft,
+                            side: BorderSide(
+                              color: _recurrence == recurrence
+                                  ? AppPalette.blue
+                                  : AppPalette.line,
+                            ),
+                            showCheckmark: false,
+                            onSelected: (_) =>
+                                setState(() => _recurrence = recurrence),
+                          );
+                        })
+                        .toList(growable: false),
                   ),
-                  child: Text(_isEditing ? '계획 수정하기' : '계획 추가하기'),
-                ),
-              ],
+                  const SizedBox(height: 22),
+                  const _FieldLabel('달성 경험치'),
+                  const SizedBox(height: 4),
+                  Text(
+                    '어려운 계획일수록 높게 설정하세요.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _experienceOptions
+                        .map((point) {
+                          return ChoiceChip(
+                            label: Text('+$point XP'),
+                            selected: _experiencePoint == point,
+                            selectedColor: AppPalette.blueSoft,
+                            side: BorderSide(
+                              color: _experiencePoint == point
+                                  ? AppPalette.blue
+                                  : AppPalette.line,
+                            ),
+                            showCheckmark: false,
+                            onSelected: (_) =>
+                                setState(() => _experiencePoint = point),
+                          );
+                        })
+                        .toList(growable: false),
+                  ),
+                  const SizedBox(height: 30),
+                  if (_submitErrorMessage != null) ...[
+                    Text(
+                      _submitErrorMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppPalette.red,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  FilledButton(
+                    onPressed: _isSubmitting ? null : _submit,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(_isEditing ? '계획 수정하기' : '계획 추가하기'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -452,27 +499,42 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     final formIsValid = _formKey.currentState?.validate() ?? false;
-    final timeIsValid = _verificationDueAt.isAfter(_scheduledAt);
+    final timeIsValid =
+        _verificationDueAt.isAfter(_scheduledAt) &&
+        _verificationDueAt.isAfter(DateTime.now());
     if (!formIsValid || !timeIsValid) {
       setState(() => _showTimeError = !timeIsValid);
       return;
     }
 
-    Navigator.of(context).pop(
-      PlanDraft(
-        title: _titleController.text.trim(),
-        scheduledAt: _scheduledAt,
-        verificationDueAt: _verificationDueAt,
-        category: _category,
-        recurrence: _recurrence,
-        experiencePoint: _experiencePoint,
-        visibility: _visibility,
-        photoProofRequired: _photoProofRequired,
-      ),
+    final draft = PlanDraft(
+      title: _titleController.text.trim(),
+      scheduledAt: _scheduledAt,
+      verificationDueAt: _verificationDueAt,
+      category: _category,
+      recurrence: _recurrence,
+      experiencePoint: _experiencePoint,
+      visibility: _visibility,
+      photoProofRequired: _photoProofRequired,
     );
+    setState(() {
+      _isSubmitting = true;
+      _submitErrorMessage = null;
+    });
+
+    final errorMessage = await widget.onSubmit(draft);
+    if (!mounted) return;
+    if (errorMessage == null) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    setState(() {
+      _isSubmitting = false;
+      _submitErrorMessage = errorMessage;
+    });
   }
 
   DateTime _suggestedSchedule(DateTime selectedDate) {
@@ -491,9 +553,10 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
 }
 
 class _SheetHeader extends StatelessWidget {
-  const _SheetHeader({required this.isEditing});
+  const _SheetHeader({required this.isEditing, required this.canClose});
 
   final bool isEditing;
+  final bool canClose;
 
   @override
   Widget build(BuildContext context) {
@@ -519,7 +582,7 @@ class _SheetHeader extends StatelessWidget {
         ),
         IconButton(
           tooltip: '닫기',
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: canClose ? () => Navigator.of(context).pop() : null,
           icon: const Icon(Icons.close_rounded),
         ),
       ],
@@ -679,10 +742,15 @@ class _PublicWarning extends StatelessWidget {
 }
 
 class _PhotoProofSwitch extends StatelessWidget {
-  const _PhotoProofSwitch({required this.value, required this.onChanged});
+  const _PhotoProofSwitch({
+    required this.value,
+    required this.onChanged,
+    this.unavailableMessage,
+  });
 
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
+  final String? unavailableMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -696,7 +764,7 @@ class _PhotoProofSwitch extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         title: Text('사진 인증 필수', style: Theme.of(context).textTheme.titleMedium),
         subtitle: Text(
-          '켜면 완료할 때 사진 없이 제출할 수 없어요.',
+          unavailableMessage ?? '켜면 완료할 때 사진 없이 제출할 수 없어요.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),

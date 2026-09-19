@@ -14,6 +14,9 @@ void main() {
       addTearDown(viewModel.dispose);
 
       await tester.pumpWidget(_testApp(AuthPage(viewModel: viewModel)));
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('authSubmitButton')),
+      );
       await tester.tap(find.byKey(const ValueKey('authSubmitButton')));
       await tester.pump();
 
@@ -29,6 +32,9 @@ void main() {
       await tester.pumpWidget(_testApp(AuthPage(viewModel: viewModel)));
       await tester.enterText(_editableText('emailField'), 'wrong-email');
       await tester.enterText(_editableText('passwordField'), '1234567');
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('authSubmitButton')),
+      );
       await tester.tap(find.byKey(const ValueKey('authSubmitButton')));
       await tester.pump();
 
@@ -46,6 +52,9 @@ void main() {
       await tester.pumpWidget(_testApp(AuthPage(viewModel: viewModel)));
       await tester.enterText(_editableText('emailField'), overlongEmail);
       await tester.enterText(_editableText('passwordField'), 'password123');
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('authSubmitButton')),
+      );
       await tester.tap(find.byKey(const ValueKey('authSubmitButton')));
       await tester.pump();
 
@@ -71,7 +80,7 @@ void main() {
       expect(viewModel.loginPassword, 'password123');
     });
 
-    testWidgets('회원가입에서는 닉네임을 검증하고 세 입력값을 전달한다', (tester) async {
+    testWidgets('회원가입에서는 닉네임과 비밀번호 확인을 검증한다', (tester) async {
       final viewModel = _FakeAuthSessionViewModel();
       addTearDown(viewModel.dispose);
 
@@ -83,13 +92,28 @@ void main() {
       await tester.enterText(_editableText('nicknameField'), 'a');
       await tester.enterText(_editableText('emailField'), 'new@example.com');
       await tester.enterText(_editableText('passwordField'), 'password123');
+      await tester.enterText(
+        _editableText('passwordConfirmationField'),
+        'different123',
+      );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('authSubmitButton')),
+      );
       await tester.tap(find.byKey(const ValueKey('authSubmitButton')));
       await tester.pump();
 
       expect(find.text('닉네임은 2자 이상 입력해 주세요.'), findsOneWidget);
+      expect(find.text('비밀번호가 서로 일치하지 않습니다.'), findsOneWidget);
       expect(viewModel.signUpCalls, 0);
 
       await tester.enterText(_editableText('nicknameField'), '  민수  ');
+      await tester.enterText(
+        _editableText('passwordConfirmationField'),
+        'password123',
+      );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('authSubmitButton')),
+      );
       await tester.tap(find.byKey(const ValueKey('authSubmitButton')));
       await tester.pumpAndSettle();
 
@@ -110,6 +134,13 @@ void main() {
       await tester.enterText(_editableText('nicknameField'), '민수');
       await tester.enterText(_editableText('emailField'), 'new@example.com');
       await tester.enterText(_editableText('passwordField'), 'password123');
+      await tester.enterText(
+        _editableText('passwordConfirmationField'),
+        'password123',
+      );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('authSubmitButton')),
+      );
       await tester.tap(find.byKey(const ValueKey('authSubmitButton')));
       await tester.pumpAndSettle();
 
@@ -121,6 +152,9 @@ void main() {
         findsOneWidget,
       );
 
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('authSubmitButton')),
+      );
       await tester.tap(find.byKey(const ValueKey('authSubmitButton')));
       await tester.pumpAndSettle();
       expect(viewModel.signUpCalls, 1);
@@ -184,7 +218,7 @@ void main() {
       expect(find.text('이메일 또는 비밀번호가 올바르지 않아요.'), findsOneWidget);
       expect(find.byKey(const ValueKey('authServerError')), findsOneWidget);
       expect(
-        find.bySemanticsLabel(RegExp('로그인 오류: 이메일 또는 비밀번호가 올바르지 않아요.')),
+        find.bySemanticsLabel(RegExp('인증 오류: 이메일 또는 비밀번호가 올바르지 않아요.')),
         findsOneWidget,
       );
 
@@ -192,6 +226,24 @@ void main() {
       await tester.pump();
       expect(find.byKey(const ValueKey('authServerError')), findsNothing);
       semantics.dispose();
+    });
+
+    testWidgets('서버 필드 오류를 해당 입력칸 아래에 표시한다', (tester) async {
+      final viewModel = _FakeAuthSessionViewModel();
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(_testApp(AuthPage(viewModel: viewModel)));
+      await tester.tap(find.byKey(const ValueKey('authSignUpTab')));
+      await tester.pump();
+      viewModel.showFieldError('email', '이미 사용 중인 이메일입니다.');
+      await tester.pump();
+
+      expect(find.text('이미 사용 중인 이메일입니다.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('authServerError')), findsNothing);
+
+      await tester.enterText(_editableText('emailField'), 'new@example.com');
+      await tester.pump();
+      expect(find.text('이미 사용 중인 이메일입니다.'), findsNothing);
     });
 
     testWidgets('360px 화면에서 키보드가 열려도 레이아웃 오류가 없다', (tester) async {
@@ -244,6 +296,7 @@ class _FakeAuthSessionViewModel extends ChangeNotifier
   bool _accountCreatedButLoginRequired = false;
   bool _failAutoLoginAfterAccountCreation = false;
   String? _errorMessage;
+  Map<String, String> _fieldErrors = const {};
   Completer<bool>? _loginCompleter;
 
   int loginCalls = 0;
@@ -262,6 +315,9 @@ class _FakeAuthSessionViewModel extends ChangeNotifier
 
   @override
   String? get errorMessage => _errorMessage;
+
+  @override
+  String? fieldError(String field) => _fieldErrors[field];
 
   @override
   Future<bool> login({required String email, required String password}) async {
@@ -302,8 +358,9 @@ class _FakeAuthSessionViewModel extends ChangeNotifier
 
   @override
   void clearError() {
-    if (_errorMessage == null) return;
+    if (_errorMessage == null && _fieldErrors.isEmpty) return;
     _errorMessage = null;
+    _fieldErrors = const {};
     notifyListeners();
   }
 
@@ -321,6 +378,12 @@ class _FakeAuthSessionViewModel extends ChangeNotifier
 
   void showError(String message) {
     _errorMessage = message;
+    notifyListeners();
+  }
+
+  void showFieldError(String field, String message) {
+    _errorMessage = null;
+    _fieldErrors = {field: message};
     notifyListeners();
   }
 

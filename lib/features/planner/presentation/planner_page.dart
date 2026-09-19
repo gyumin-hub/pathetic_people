@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_palette.dart';
@@ -25,14 +27,14 @@ class _PlannerPageState extends State<PlannerPage> {
   @override
   void initState() {
     super.initState();
-    _evaluateOverduePlansAfterBuild();
+    _initializePlannerAfterBuild();
   }
 
   @override
   void didUpdateWidget(covariant PlannerPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.viewModel != widget.viewModel) {
-      _evaluateOverduePlansAfterBuild();
+      _initializePlannerAfterBuild();
     }
   }
 
@@ -54,7 +56,11 @@ class _PlannerPageState extends State<PlannerPage> {
                   child: PageHeader(
                     eyebrow: 'PLANNER',
                     title: '계획',
-                    trailing: _AddPlanButton(onPressed: _openAddPlan),
+                    trailing: _AddPlanButton(
+                      onPressed: widget.viewModel.isSubmittingPlan
+                          ? null
+                          : _openAddPlan,
+                    ),
                   ),
                 ),
                 SliverToBoxAdapter(
@@ -87,11 +93,31 @@ class _PlannerPageState extends State<PlannerPage> {
                         widget.viewModel.selectedDate,
                       ),
                       actionLabel: '추가',
-                      onAction: _openAddPlan,
+                      onAction: widget.viewModel.isSubmittingPlan
+                          ? null
+                          : _openAddPlan,
                     ),
                   ),
                 ),
-                if (plans.isEmpty)
+                if (widget.viewModel.loadErrorMessage != null &&
+                    plans.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _PlanLoadErrorBanner(
+                      message: widget.viewModel.loadErrorMessage!,
+                      onRetry: () => unawaited(widget.viewModel.refreshPlans()),
+                    ),
+                  ),
+                if (widget.viewModel.isLoading && plans.isEmpty)
+                  const SliverToBoxAdapter(child: _PlanLoadingState())
+                else if (widget.viewModel.loadErrorMessage != null &&
+                    plans.isEmpty)
+                  SliverToBoxAdapter(
+                    child: _PlanLoadErrorState(
+                      message: widget.viewModel.loadErrorMessage!,
+                      onRetry: () => unawaited(widget.viewModel.refreshPlans()),
+                    ),
+                  )
+                else if (plans.isEmpty)
                   SliverToBoxAdapter(
                     child: _EmptyPlanState(onAdd: _openAddPlan),
                   )
@@ -101,27 +127,33 @@ class _PlannerPageState extends State<PlannerPage> {
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate((context, index) {
                         final plan = plans[index];
+                        final card = _PlanCard(
+                          plan: plan,
+                          canEdit: widget.viewModel.supportsUpdate,
+                          canDelete: widget.viewModel.supportsDelete,
+                          onTap: () => _openPlanDetail(plan),
+                          onCompletionTap: () => _openPlanDetail(
+                            plan,
+                            initialProofType: PlanProofType.completion,
+                          ),
+                          onEdit: () => _openEditPlan(plan),
+                          onDelete: () => _requestDelete(plan),
+                        );
                         return Padding(
                           padding: EdgeInsets.only(
                             bottom: index == plans.length - 1 ? 0 : 10,
                           ),
-                          child: Dismissible(
-                            key: ValueKey(plan.id),
-                            direction: DismissDirection.endToStart,
-                            confirmDismiss: (_) => _confirmDelete(plan),
-                            onDismissed: (_) => _removePlan(plan),
-                            background: const _DeleteBackground(),
-                            child: _PlanCard(
-                              plan: plan,
-                              onTap: () => _openPlanDetail(plan),
-                              onCompletionTap: () => _openPlanDetail(
-                                plan,
-                                initialProofType: PlanProofType.completion,
-                              ),
-                              onEdit: () => _openEditPlan(plan),
-                              onDelete: () => _requestDelete(plan),
-                            ),
-                          ),
+                          child: widget.viewModel.supportsDelete
+                              ? Dismissible(
+                                  key: ValueKey(plan.id),
+                                  direction: DismissDirection.endToStart,
+                                  confirmDismiss: (_) => _confirmDelete(plan),
+                                  onDismissed: (_) =>
+                                      unawaited(_removePlan(plan)),
+                                  background: const _DeleteBackground(),
+                                  child: card,
+                                )
+                              : card,
                         );
                       }, childCount: plans.length),
                     ),
@@ -142,10 +174,10 @@ class _PlannerPageState extends State<PlannerPage> {
     );
   }
 
-  void _evaluateOverduePlansAfterBuild() {
+  void _initializePlannerAfterBuild() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        widget.viewModel.evaluateOverduePlans();
+        unawaited(widget.viewModel.initialize());
       }
     });
   }
@@ -171,6 +203,7 @@ class _PlannerPageState extends State<PlannerPage> {
   }
 
   Future<void> _openAddPlan() async {
+    if (widget.viewModel.isSubmittingPlan) return;
     final saved = await PlanFormSheet.show(
       context,
       viewModel: widget.viewModel,
@@ -183,6 +216,10 @@ class _PlannerPageState extends State<PlannerPage> {
   }
 
   Future<void> _openEditPlan(PlanItem plan) async {
+    if (!widget.viewModel.supportsUpdate) {
+      _showMessage('서버 계획 수정 기능은 아직 준비되지 않았습니다.');
+      return;
+    }
     if (plan.progress != PlanProgress.pending) {
       _showMessage('완료되거나 실패한 계획은 기록을 보호하기 위해 수정할 수 없어요.');
       return;
@@ -213,7 +250,7 @@ class _PlannerPageState extends State<PlannerPage> {
 
   Future<void> _requestDelete(PlanItem plan) async {
     if (await _confirmDelete(plan)) {
-      _removePlan(plan);
+      await _removePlan(plan);
     }
   }
 
@@ -241,11 +278,14 @@ class _PlannerPageState extends State<PlannerPage> {
     return shouldDelete ?? false;
   }
 
-  void _removePlan(PlanItem plan) {
-    widget.viewModel.deletePlan(plan.id);
-    if (mounted) {
+  Future<void> _removePlan(PlanItem plan) async {
+    final deleted = await widget.viewModel.deletePlan(plan.id);
+    if (!mounted) return;
+    if (deleted) {
       _showMessage('계획을 삭제했어요.');
+      return;
     }
+    _showMessage(widget.viewModel.submitErrorMessage ?? '계획을 삭제하지 못했습니다.');
   }
 
   void _showMessage(String message) {
@@ -258,7 +298,7 @@ class _PlannerPageState extends State<PlannerPage> {
 class _AddPlanButton extends StatelessWidget {
   const _AddPlanButton({required this.onPressed});
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -762,6 +802,8 @@ enum _PlanMenuAction { edit, delete }
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
+    required this.canEdit,
+    required this.canDelete,
     required this.onTap,
     required this.onCompletionTap,
     required this.onEdit,
@@ -769,6 +811,8 @@ class _PlanCard extends StatelessWidget {
   });
 
   final PlanItem plan;
+  final bool canEdit;
+  final bool canDelete;
   final VoidCallback onTap;
   final VoidCallback onCompletionTap;
   final VoidCallback onEdit;
@@ -895,46 +939,48 @@ class _PlanCard extends StatelessWidget {
                   ],
                 ),
               ),
-              PopupMenuButton<_PlanMenuAction>(
-                tooltip: '계획 메뉴',
-                icon: const Icon(
-                  Icons.more_horiz_rounded,
-                  color: AppPalette.muted,
-                ),
-                onSelected: (action) {
-                  switch (action) {
-                    case _PlanMenuAction.edit:
-                      onEdit();
-                    case _PlanMenuAction.delete:
-                      onDelete();
-                  }
-                },
-                itemBuilder: (context) => [
-                  if (plan.progress == PlanProgress.pending)
-                    const PopupMenuItem(
-                      value: _PlanMenuAction.edit,
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.edit_outlined),
-                        title: Text('수정'),
-                      ),
-                    ),
-                  const PopupMenuItem(
-                    value: _PlanMenuAction.delete,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        Icons.delete_outline_rounded,
-                        color: AppPalette.red,
-                      ),
-                      title: Text(
-                        '삭제',
-                        style: TextStyle(color: AppPalette.red),
-                      ),
-                    ),
+              if (canEdit || canDelete)
+                PopupMenuButton<_PlanMenuAction>(
+                  tooltip: '계획 메뉴',
+                  icon: const Icon(
+                    Icons.more_horiz_rounded,
+                    color: AppPalette.muted,
                   ),
-                ],
-              ),
+                  onSelected: (action) {
+                    switch (action) {
+                      case _PlanMenuAction.edit:
+                        onEdit();
+                      case _PlanMenuAction.delete:
+                        onDelete();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    if (canEdit && plan.progress == PlanProgress.pending)
+                      const PopupMenuItem(
+                        value: _PlanMenuAction.edit,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('수정'),
+                        ),
+                      ),
+                    if (canDelete)
+                      const PopupMenuItem(
+                        value: _PlanMenuAction.delete,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.delete_outline_rounded,
+                            color: AppPalette.red,
+                          ),
+                          title: Text(
+                            '삭제',
+                            style: TextStyle(color: AppPalette.red),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
             ],
           ),
         ),
@@ -1094,6 +1140,75 @@ class _DeleteBackground extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PlanLoadingState extends StatelessWidget {
+  const _PlanLoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 44),
+      child: Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+class _PlanLoadErrorState extends StatelessWidget {
+  const _PlanLoadErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppPalette.redSoft,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.cloud_off_outlined, color: AppPalette.red),
+            const SizedBox(height: 10),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            OutlinedButton(onPressed: onRetry, child: const Text('다시 시도')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanLoadErrorBanner extends StatelessWidget {
+  const _PlanLoadErrorBanner({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Material(
+        color: AppPalette.redSoft,
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          dense: true,
+          leading: const Icon(
+            Icons.sync_problem_rounded,
+            color: AppPalette.red,
+          ),
+          title: Text(message, style: Theme.of(context).textTheme.bodySmall),
+          trailing: TextButton(onPressed: onRetry, child: const Text('재시도')),
+        ),
       ),
     );
   }

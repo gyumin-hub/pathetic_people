@@ -7,20 +7,22 @@
 
 - 팔로잉/추천 피드, 스토리, 좋아요, 댓글, 저장, 채팅 공유
 - 사용자·콘텐츠 검색, 팔로우, 카테고리 필터, 3열 콘텐츠 탐색
-- 날짜별 계획 조회, 추가, 수정, 삭제, 완료 및 반복 일정 처리
+- 서버 기반 날짜별 계획·반복 회차 조회와 추가, 텍스트 기반 시작·완료 인증
 - 1분 주기·앱 복귀 시 미달성 판정, 독설 피드와 채팅 자동 생성
 - 1:1/그룹 채팅 생성, 검색/필터, 읽음 처리, 메시지 전송
 - 프로필 편집, 실제 계획 기반 통계·XP·레벨·연속 기록
 - 실패 공개, 단체방 알림, 독설 강도 설정의 로컬 정책 반영
 - 실제 서버 회원가입·로그인, JWT 보안 저장, 자동 로그인과 로그아웃
 
-회원가입과 로그인 사용자 정보는 Spring 서버를 거쳐 MySQL에 저장됩니다. 로그인
+회원가입·로그인과 계획·텍스트 인증은 Spring 서버를 거쳐 Supabase PostgreSQL에 저장됩니다. 로그인
 토큰은 운영체제 보안 저장소에 보관하며 앱을 다시 실행할 때 서버에서 유효성을
-확인합니다. 피드·계획·채팅·프로필 콘텐츠는 아직 `MockAppRepository`의 메모리에
-저장되므로 앱을 재실행하면 초기 데이터로 돌아갑니다.
+확인합니다. 피드·탐색·채팅·프로필 콘텐츠는 아직 `MockAppRepository`의 메모리에
+저장되므로 앱을 재실행하면 초기 데이터로 돌아갑니다. 서버 계획 수정·삭제 API와 사진
+업로드 API는 아직 없어서 원격 계획의 수정·삭제, 사진 필수 완료 인증, 사진 피드 공유는
+앱에서 제한합니다.
 
-다음 서버 연결 범위는 계획 생성·조회이며, 이후 사진 업로드, 실제 푸시 알림,
-로그인 사용자 간 소셜 피드와 실시간 채팅을 순서대로 연결합니다.
+다음 서버 연결 범위는 인증 사진 업로드이며, 이후 서버 피드, 실제 푸시 알림,
+로그인 사용자 간 소셜 기능과 실시간 채팅을 순서대로 연결합니다.
 
 ## 개발환경 준비
 
@@ -57,7 +59,9 @@ flutter run
 Android 에뮬레이터에서 로컬 서버에 연결하는 명시적 실행 예시는 다음과 같습니다.
 
 ```bash
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
+flutter run \
+  --dart-define=API_BASE_URL=http://10.0.2.2:8080 \
+  --dart-define=APP_TIMEZONE=Asia/Seoul
 ```
 
 ## 아키텍처
@@ -85,8 +89,8 @@ lib/
 데이터 변경 흐름은 다음과 같습니다.
 
 ```text
-사용자 입력 → Page → ViewModel → AppRepository
-           → 데이터 변경 → ViewModel 알림 → Page 갱신
+사용자 입력 → Page → ViewModel → 기능별 Repository
+           → Mock 또는 Spring API → ViewModel 알림 → Page 갱신
 ```
 
 ### 계층별 규칙
@@ -100,7 +104,7 @@ lib/
 
 ## 다음 서버 연동 지점
 
-`lib/domain/repositories/app_repository.dart`의 규칙을 구현하는
-`RemoteAppRepository`를 추가하고, `MotiveApp`에서 `MockAppRepository` 대신
-주입하면 됩니다. 인증은 별도 `AuthRepository`를 통해 이미 서버와 연결되어
-있으며, 계획부터 `Future` 기반의 네트워크 Repository로 순차 교체합니다.
+계획은 `PlanRepository`와 `RemotePlanRepository`를 통해 이미 서버에 연결되어 있습니다.
+다음 단계는 사진 bytes를 파일 스토리지에 업로드해 `mediaUrl`을 얻는 API를 추가하고,
+그 주소를 시작·완료 인증 요청에 넣는 것입니다. 다른 콘텐츠 기능도 한꺼번에
+`RemoteAppRepository`로 바꾸지 않고, 기능별 `Future` 기반 Repository로 순차 전환합니다.

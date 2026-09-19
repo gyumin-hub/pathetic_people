@@ -4,11 +4,14 @@ abstract final class AppEnvironment {
   static const String _definedApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
   );
+  static const String _definedTimeZone = String.fromEnvironment('APP_TIMEZONE');
 
   static String get apiBaseUrl => resolveApiBaseUrl(
     dartDefineValue: _definedApiBaseUrl,
     isAndroid: !kIsWeb && defaultTargetPlatform == TargetPlatform.android,
   );
+
+  static String get timeZone => resolveTimeZone(_definedTimeZone);
 
   @visibleForTesting
   static String resolveApiBaseUrl({
@@ -25,5 +28,11 @@ abstract final class AppEnvironment {
 
   static String normalizeApiBaseUrl(String value) {
     return value.trim().replaceFirst(RegExp(r'/+$'), '');
+  }
+
+  @visibleForTesting
+  static String resolveTimeZone(String dartDefineValue) {
+    final override = dartDefineValue.trim();
+    return override.isEmpty ? 'Asia/Seoul' : override;
   }
 }

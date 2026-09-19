@@ -62,17 +62,21 @@ class _MotiveShellState extends State<MotiveShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.plannerViewModel.evaluateOverduePlans();
+      if (mounted) {
+        unawaited(widget.plannerViewModel.evaluateOverduePlans());
+      }
     });
     _deadlineTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) widget.plannerViewModel.evaluateOverduePlans();
+      if (mounted) {
+        unawaited(widget.plannerViewModel.evaluateOverduePlans());
+      }
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      widget.plannerViewModel.evaluateOverduePlans();
+      unawaited(widget.plannerViewModel.evaluateOverduePlans());
     }
   }
 
@@ -99,7 +103,7 @@ class _MotiveShellState extends State<MotiveShell> with WidgetsBindingObserver {
               selectedIndex: _selectedIndex,
               onDestinationSelected: (index) {
                 if (index == 2) {
-                  widget.plannerViewModel.evaluateOverduePlans();
+                  unawaited(widget.plannerViewModel.evaluateOverduePlans());
                 }
                 setState(() => _selectedIndex = index);
               },

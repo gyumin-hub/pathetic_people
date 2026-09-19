@@ -97,11 +97,15 @@ class _PlanDetailSheetState extends State<PlanDetailSheet> {
           final canSubmitProof =
               !now.isBefore(plan.scheduledAt) &&
               now.isBefore(plan.verificationDueAt);
-          final proofDisabledMessage = now.isBefore(plan.scheduledAt)
+          final completionUnavailableMessage = widget.viewModel
+              .proofUnavailableMessage(plan, PlanProofType.completion);
+          final proofDisabledMessage = widget.viewModel.isSubmittingProof
+              ? '인증을 서버에 저장하고 있어요.'
+              : now.isBefore(plan.scheduledAt)
               ? '시작 시간이 되면 인증할 수 있어요.'
               : !now.isBefore(plan.verificationDueAt)
               ? '완료 인증 시간이 지났어요. 상태를 새로 확인해 주세요.'
-              : null;
+              : completionUnavailableMessage;
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
             child: Column(
@@ -124,7 +128,12 @@ class _PlanDetailSheetState extends State<PlanDetailSheet> {
                 if (plan.progress == PlanProgress.pending)
                   _PendingActions(
                     hasStartProof: plan.startProof != null,
-                    isEnabled: canSubmitProof,
+                    isStartEnabled:
+                        canSubmitProof && !widget.viewModel.isSubmittingProof,
+                    isCompletionEnabled:
+                        canSubmitProof &&
+                        !widget.viewModel.isSubmittingProof &&
+                        completionUnavailableMessage == null,
                     disabledMessage: proofDisabledMessage,
                     onStart: () => _openProof(plan, PlanProofType.start),
                     onComplete: () =>
@@ -141,28 +150,34 @@ class _PlanDetailSheetState extends State<PlanDetailSheet> {
   }
 
   Future<void> _openProof(PlanItem plan, PlanProofType type) async {
-    final proofDraft = await PlanProofSheet.show(
+    final unavailableMessage = widget.viewModel.proofUnavailableMessage(
+      plan,
+      type,
+    );
+    if (unavailableMessage != null) {
+      _showMessage(unavailableMessage, isError: true);
+      return;
+    }
+    final saved = await PlanProofSheet.show(
       context,
       plan: plan,
       type: type,
+      supportsMediaUpload: widget.viewModel.supportsProofMediaUpload,
+      onSubmit: (proofDraft) async {
+        final succeeded = type == PlanProofType.start
+            ? await widget.viewModel.startPlan(plan.id, proofDraft)
+            : await widget.viewModel.completePlan(plan.id, proofDraft);
+        if (succeeded) return null;
+        return widget.viewModel.proofErrorMessage ??
+            '인증을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.';
+      },
     );
-    if (proofDraft == null || !mounted) return;
-
-    try {
-      if (type == PlanProofType.start) {
-        widget.viewModel.startPlan(plan.id, proofDraft);
-      } else {
-        widget.viewModel.completePlan(plan.id, proofDraft);
-      }
+    if (!mounted) return;
+    if (saved) {
       _showMessage(
         type == PlanProofType.start ? '시작 인증을 기록했어요.' : '완료 인증을 기록했어요.',
       );
-    } on StateError catch (error) {
-      _showMessage(error.message, isError: true);
-    } on ArgumentError catch (error) {
-      _showMessage('${error.message}', isError: true);
-    } catch (_) {
-      _showMessage('인증을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.', isError: true);
+      return;
     }
   }
 
@@ -367,6 +382,7 @@ class _ProofPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bytes = proof.mediaBytes;
+    final mediaUrl = proof.mediaUrl?.trim();
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -403,6 +419,9 @@ class _ProofPreview extends StatelessWidget {
           if (bytes != null && bytes.isNotEmpty) ...[
             const SizedBox(height: 12),
             _ProofImage(bytes: bytes),
+          ] else if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _ProofNetworkImage(url: mediaUrl),
           ],
           if (proof.note.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -458,17 +477,51 @@ class _ProofImage extends StatelessWidget {
   }
 }
 
+class _ProofNetworkImage extends StatelessWidget {
+  const _ProofNetworkImage({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: double.infinity,
+        height: 168,
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return const ColoredBox(
+              color: AppPalette.surfaceStrong,
+              child: Center(
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: AppPalette.muted,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 class _PendingActions extends StatelessWidget {
   const _PendingActions({
     required this.hasStartProof,
-    required this.isEnabled,
+    required this.isStartEnabled,
+    required this.isCompletionEnabled,
     required this.disabledMessage,
     required this.onStart,
     required this.onComplete,
   });
 
   final bool hasStartProof;
-  final bool isEnabled;
+  final bool isStartEnabled;
+  final bool isCompletionEnabled;
   final String? disabledMessage;
   final VoidCallback onStart;
   final VoidCallback onComplete;
@@ -482,7 +535,7 @@ class _PendingActions extends StatelessWidget {
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: isEnabled && !hasStartProof ? onStart : null,
+                onPressed: isStartEnabled && !hasStartProof ? onStart : null,
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                 ),
@@ -497,7 +550,7 @@ class _PendingActions extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: FilledButton.icon(
-                onPressed: isEnabled ? onComplete : null,
+                onPressed: isCompletionEnabled ? onComplete : null,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                 ),

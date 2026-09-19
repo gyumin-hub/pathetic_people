@@ -36,5 +36,16 @@ void main() {
         'http://127.0.0.1:8080',
       );
     });
+
+    test('timezone defaults to the team development timezone', () {
+      expect(AppEnvironment.resolveTimeZone(''), 'Asia/Seoul');
+    });
+
+    test('timezone dart-define value is trimmed', () {
+      expect(
+        AppEnvironment.resolveTimeZone('  America/Los_Angeles  '),
+        'America/Los_Angeles',
+      );
+    });
   });
 }

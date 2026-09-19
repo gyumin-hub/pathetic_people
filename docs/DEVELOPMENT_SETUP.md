@@ -248,13 +248,14 @@ curl -i http://127.0.0.1:8080/api/auth/me
 
 ## 8. Flutter 앱의 서버 주소
 
-앱은 빌드 시 `API_BASE_URL`이라는 값으로 서버 주소를 받습니다. 주소 끝의 `/`는 넣지
-않는 것을 권장합니다.
+앱은 빌드 시 `API_BASE_URL`로 서버 주소를, `APP_TIMEZONE`으로 계획 생성에 사용할 IANA
+시간대를 받습니다. 주소 끝의 `/`는 넣지 않는 것을 권장합니다.
 
 현재 앱은 시작할 때 저장된 로그인 토큰을 서버에서 확인하는 인증 게이트 구조입니다. 서버가
 꺼져 있어도 Flutter 앱은 실행되지만 로그인·회원가입 화면까지만 확인할 수 있습니다. 피드,
-계획, 채팅, 프로필 등 5개 탭으로 들어가려면 MySQL과 Spring 서버를 먼저 실행하고 로그인해야
-합니다. 따라서 `flutter run`만 성공했다고 전체 기능이 실행 가능한 상태는 아닙니다.
+계획, 채팅, 프로필 등 5개 탭으로 들어가려면 PostgreSQL에 연결된 Spring 서버를 먼저 실행하고 로그인해야
+합니다. 계획 조회·생성·텍스트 인증도 서버를 사용하므로 `flutter run`만 성공했다고 전체
+기능이 실행 가능한 상태는 아닙니다.
 
 | 앱 실행 위치 | 서버 주소 | 이유 |
 | --- | --- | --- |
@@ -281,24 +282,29 @@ flutter devices
 ```bash
 # Android 에뮬레이터
 flutter run -d <android-device-id> \
-  --dart-define=API_BASE_URL=http://10.0.2.2:8080
+  --dart-define=API_BASE_URL=http://10.0.2.2:8080 \
+  --dart-define=APP_TIMEZONE=Asia/Seoul
 
 # macOS 앱
 flutter run -d macos \
-  --dart-define=API_BASE_URL=http://127.0.0.1:8080
+  --dart-define=API_BASE_URL=http://127.0.0.1:8080 \
+  --dart-define=APP_TIMEZONE=Asia/Seoul
 
 # iOS Simulator
 flutter run -d <ios-simulator-id> \
-  --dart-define=API_BASE_URL=http://127.0.0.1:8080
+  --dart-define=API_BASE_URL=http://127.0.0.1:8080 \
+  --dart-define=APP_TIMEZONE=Asia/Seoul
 
 # Chrome/web
 flutter run -d chrome \
-  --dart-define=API_BASE_URL=http://127.0.0.1:8080
+  --dart-define=API_BASE_URL=http://127.0.0.1:8080 \
+  --dart-define=APP_TIMEZONE=Asia/Seoul
 ```
 
 값을 생략하면 앱이 Android에서는 `http://10.0.2.2:8080`, macOS·iOS·web에서는
-`http://127.0.0.1:8080`을 기본값으로 사용합니다. 명시적으로 적어 두면 어떤 서버에
-연결되는지 실행 명령만 보고 확인할 수 있습니다.
+`http://127.0.0.1:8080`을 API 기본값으로, `Asia/Seoul`을 시간대 기본값으로 사용합니다.
+다른 지역에서는 `America/Los_Angeles`처럼 실제 IANA 이름을 넣습니다. 명시적으로 적어
+두면 어떤 서버와 시간대를 사용하는지 실행 명령만 보고 확인할 수 있습니다.
 
 로컬 web 개발을 위해 서버는 `http://localhost:<임의 포트>`와
 `http://127.0.0.1:<임의 포트>`에서 오는 브라우저 요청을 허용합니다. 배포된 외부 웹
@@ -317,7 +323,8 @@ ipconfig getifaddr en0
 
 ```bash
 flutter run -d <phone-device-id> \
-  --dart-define=API_BASE_URL=http://192.168.0.23:8080
+  --dart-define=API_BASE_URL=http://192.168.0.23:8080 \
+  --dart-define=APP_TIMEZONE=Asia/Seoul
 ```
 
 Mac의 IP는 네트워크가 바뀌면 달라질 수 있으므로 실행할 때 다시 확인합니다. 연결되지 않으면
@@ -336,14 +343,14 @@ Mac 서버와 통신하려면 `허용`을 선택합니다. 이 안내 문구는 
 4. Flyway 완료와 서버 `8080` 시작 로그가 나올 때까지 기다립니다.
 5. Android 에뮬레이터 또는 테스트 기기를 켭니다.
 6. 앱 폴더에서 `flutter pub get`을 실행합니다.
-7. 대상에 맞는 `API_BASE_URL`로 `flutter run`을 실행합니다.
+7. 대상에 맞는 `API_BASE_URL`과 `APP_TIMEZONE`으로 `flutter run`을 실행합니다.
 8. 종료할 때 앱과 서버 터미널에서 `Ctrl+C`를 누릅니다.
 
 데이터 흐름은 다음과 같습니다.
 
 ```text
 Flutter 입력
--> API_BASE_URL의 Spring 서버:8080
+-> API_BASE_URL의 Spring 서버:8080 (계획 시각은 APP_TIMEZONE 포함)
 -> application-secret.properties의 접속 정보
 -> Supabase PostgreSQL의 motive 스키마
 -> JSON 응답

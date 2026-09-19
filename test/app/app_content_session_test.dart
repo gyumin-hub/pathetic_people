@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pathetic_people/app/app_content_session.dart';
+import 'package:pathetic_people/data/repositories/local_plan_repository.dart';
 import 'package:pathetic_people/data/repositories/mock_app_repository.dart';
 import 'package:pathetic_people/features/auth/domain/auth_user.dart';
 
@@ -34,7 +35,12 @@ void main() {
 
   test('dispose releases every content view model and repository once', () {
     final repository = _TrackingMockAppRepository();
-    final session = AppContentSession(userId: 7, repository: repository);
+    final planRepository = _TrackingPlanRepository(repository);
+    final session = AppContentSession(
+      userId: 7,
+      repository: repository,
+      planRepository: planRepository,
+    );
     final viewModels = <ChangeNotifier>[
       session.feedViewModel,
       session.exploreViewModel,
@@ -48,6 +54,7 @@ void main() {
 
     expect(session.isDisposed, isTrue);
     expect(repository.disposeCount, 1);
+    expect(planRepository.disposeCount, 1);
     for (final viewModel in viewModels) {
       expect(() => viewModel.addListener(_emptyListener), throwsFlutterError);
     }
@@ -57,6 +64,18 @@ void main() {
 void _emptyListener() {}
 
 class _TrackingMockAppRepository extends MockAppRepository {
+  int disposeCount = 0;
+
+  @override
+  void dispose() {
+    disposeCount += 1;
+    super.dispose();
+  }
+}
+
+class _TrackingPlanRepository extends LocalPlanRepository {
+  _TrackingPlanRepository(super.appRepository);
+
   int disposeCount = 0;
 
   @override

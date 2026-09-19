@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/config/app_environment.dart';
 import '../core/network/auth_api_client.dart';
 import '../core/theme/app_theme.dart';
 import '../data/repositories/mock_app_repository.dart';
@@ -11,6 +12,8 @@ import '../features/auth/domain/auth_repository.dart';
 import '../features/auth/presentation/auth_page.dart';
 import '../features/auth/presentation/auth_splash_page.dart';
 import '../features/auth/view_models/auth_session_view_model.dart';
+import '../features/planner/data/plan_api_client.dart';
+import '../features/planner/data/remote_plan_repository.dart';
 import 'app_content_session.dart';
 import 'motive_shell.dart';
 
@@ -18,11 +21,13 @@ class MotiveApp extends StatefulWidget {
   const MotiveApp({
     this.authRepository,
     this.contentRepositoryFactory,
+    this.planRepositoryFactory,
     super.key,
   });
 
   final AuthRepository? authRepository;
   final ContentRepositoryFactory? contentRepositoryFactory;
+  final PlanRepositoryFactory? planRepositoryFactory;
 
   @override
   State<MotiveApp> createState() => _MotiveAppState();
@@ -30,17 +35,33 @@ class MotiveApp extends StatefulWidget {
 
 class _MotiveAppState extends State<MotiveApp> {
   late final AuthSessionViewModel _authViewModel;
+  PlanRepositoryFactory? _planRepositoryFactory;
   AppContentSession? _contentSession;
 
   @override
   void initState() {
     super.initState();
-    final authRepository =
-        widget.authRepository ??
-        AuthRepositoryImpl(
-          apiClient: AuthApiClient(),
-          tokenStore: SecureAuthTokenStore(),
-        );
+    final AuthRepository authRepository;
+    final injectedRepository = widget.authRepository;
+    if (injectedRepository != null) {
+      authRepository = injectedRepository;
+      _planRepositoryFactory = widget.planRepositoryFactory;
+    } else {
+      final tokenStore = SecureAuthTokenStore();
+      authRepository = AuthRepositoryImpl(
+        apiClient: AuthApiClient(),
+        tokenStore: tokenStore,
+      );
+      _planRepositoryFactory =
+          widget.planRepositoryFactory ??
+          (_) => RemotePlanRepository(
+            apiClient: PlanApiClient(
+              accessTokenReader: tokenStore.readAccessToken,
+              onUnauthorized: () => _handlePlanUnauthorized(tokenStore),
+            ),
+            timezone: AppEnvironment.timeZone,
+          );
+    }
     _authViewModel = AuthSessionViewModel(authRepository)
       ..addListener(_handleAuthSessionChanged);
     unawaited(_authViewModel.restoreSession());
@@ -108,6 +129,7 @@ class _MotiveAppState extends State<MotiveApp> {
       _contentSession = AppContentSession(
         userId: authUser.id,
         repository: repository,
+        planRepository: _planRepositoryFactory?.call(authUser.id),
       );
     }
     _contentSession?.syncAuthenticatedUser(authUser);
@@ -117,5 +139,18 @@ class _MotiveAppState extends State<MotiveApp> {
     final contentSession = _contentSession;
     _contentSession = null;
     contentSession?.dispose();
+  }
+
+  void _handlePlanUnauthorized(SecureAuthTokenStore tokenStore) {
+    _authViewModel.expireSession();
+    unawaited(_deleteExpiredToken(tokenStore));
+  }
+
+  Future<void> _deleteExpiredToken(SecureAuthTokenStore tokenStore) async {
+    try {
+      await tokenStore.deleteAccessToken();
+    } catch (_) {
+      // The expired session is already closed; token cleanup can be retried later.
+    }
   }
 }

@@ -19,6 +19,7 @@ class _AuthPageState extends State<AuthPage> {
   final _nicknameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _passwordConfirmationController = TextEditingController();
 
   _AuthMode _mode = _AuthMode.login;
   bool _obscurePassword = true;
@@ -30,6 +31,7 @@ class _AuthPageState extends State<AuthPage> {
     _nicknameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _passwordConfirmationController.dispose();
     super.dispose();
   }
 
@@ -101,6 +103,9 @@ class _AuthPageState extends State<AuthPage> {
                                     enabled: !widget.viewModel.isSubmitting,
                                     maxLength: 20,
                                     validator: _validateNickname,
+                                    serverError: widget.viewModel.fieldError(
+                                      'nickname',
+                                    ),
                                     onChanged: (_) => _clearServerError(),
                                   ),
                                   const SizedBox(height: 14),
@@ -120,6 +125,9 @@ class _AuthPageState extends State<AuthPage> {
                                   ],
                                   enabled: !widget.viewModel.isSubmitting,
                                   validator: _validateEmail,
+                                  serverError: widget.viewModel.fieldError(
+                                    'email',
+                                  ),
                                   onChanged: (_) => _clearServerError(),
                                 ),
                                 const SizedBox(height: 14),
@@ -130,7 +138,9 @@ class _AuthPageState extends State<AuthPage> {
                                   hintText: '8자 이상 입력',
                                   prefixIcon: Icons.lock_outline_rounded,
                                   obscureText: _obscurePassword,
-                                  textInputAction: TextInputAction.done,
+                                  textInputAction: _isSignUp
+                                      ? TextInputAction.next
+                                      : TextInputAction.done,
                                   autofillHints: [
                                     _isSignUp
                                         ? AutofillHints.newPassword
@@ -138,8 +148,13 @@ class _AuthPageState extends State<AuthPage> {
                                   ],
                                   enabled: !widget.viewModel.isSubmitting,
                                   validator: _validatePassword,
+                                  serverError: widget.viewModel.fieldError(
+                                    'password',
+                                  ),
                                   onChanged: (_) => _clearServerError(),
-                                  onFieldSubmitted: (_) => _submit(),
+                                  onFieldSubmitted: _isSignUp
+                                      ? null
+                                      : (_) => _submit(),
                                   suffixIcon: IconButton(
                                     tooltip: _obscurePassword
                                         ? '비밀번호 표시'
@@ -160,6 +175,27 @@ class _AuthPageState extends State<AuthPage> {
                                     ),
                                   ),
                                 ),
+                                if (_isSignUp) ...[
+                                  const SizedBox(height: 14),
+                                  _AuthTextField(
+                                    key: const ValueKey(
+                                      'passwordConfirmationField',
+                                    ),
+                                    controller: _passwordConfirmationController,
+                                    label: '비밀번호 확인',
+                                    hintText: '비밀번호를 한 번 더 입력',
+                                    prefixIcon: Icons.lock_reset_rounded,
+                                    obscureText: _obscurePassword,
+                                    textInputAction: TextInputAction.done,
+                                    autofillHints: const [
+                                      AutofillHints.newPassword,
+                                    ],
+                                    enabled: !widget.viewModel.isSubmitting,
+                                    validator: _validatePasswordConfirmation,
+                                    onChanged: (_) => _clearServerError(),
+                                    onFieldSubmitted: (_) => _submit(),
+                                  ),
+                                ],
                                 _ServerErrorMessage(
                                   message: widget.viewModel.errorMessage,
                                 ),
@@ -218,13 +254,12 @@ class _AuthPageState extends State<AuthPage> {
       _mode = mode;
       _formKey = GlobalKey<FormState>();
       _obscurePassword = true;
+      _passwordConfirmationController.clear();
     });
   }
 
   void _clearServerError() {
-    if (widget.viewModel.errorMessage != null) {
-      widget.viewModel.clearError();
-    }
+    widget.viewModel.clearError();
   }
 
   Future<void> _submit() async {
@@ -233,7 +268,7 @@ class _AuthPageState extends State<AuthPage> {
     widget.viewModel.clearError();
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final email = _emailController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
     final password = _passwordController.text;
     if (_isSignUp) {
       final authenticated = await widget.viewModel.signUp(
@@ -278,6 +313,16 @@ class _AuthPageState extends State<AuthPage> {
     final password = value ?? '';
     if (password.isEmpty) return '비밀번호를 입력해 주세요.';
     if (password.length < 8) return '비밀번호는 8자 이상 입력해 주세요.';
+    return null;
+  }
+
+  String? _validatePasswordConfirmation(String? value) {
+    if (!_isSignUp) return null;
+    final confirmation = value ?? '';
+    if (confirmation.isEmpty) return '비밀번호를 한 번 더 입력해 주세요.';
+    if (confirmation != _passwordController.text) {
+      return '비밀번호가 서로 일치하지 않습니다.';
+    }
     return null;
   }
 }
@@ -443,6 +488,7 @@ class _AuthTextField extends StatelessWidget {
     this.maxLength,
     this.suffixIcon,
     this.onFieldSubmitted,
+    this.serverError,
     super.key,
   });
 
@@ -460,6 +506,7 @@ class _AuthTextField extends StatelessWidget {
   final FormFieldValidator<String> validator;
   final ValueChanged<String> onChanged;
   final ValueChanged<String>? onFieldSubmitted;
+  final String? serverError;
 
   @override
   Widget build(BuildContext context) {
@@ -475,6 +522,7 @@ class _AuthTextField extends StatelessWidget {
         obscureText: obscureText,
         maxLength: maxLength,
         validator: validator,
+        forceErrorText: serverError,
         onChanged: onChanged,
         onFieldSubmitted: onFieldSubmitted,
         autocorrect: false,
@@ -509,7 +557,7 @@ class _ServerErrorMessage extends StatelessWidget {
 
     return Semantics(
       liveRegion: true,
-      label: '로그인 오류: $errorMessage',
+      label: '인증 오류: $errorMessage',
       child: Container(
         key: const ValueKey('authServerError'),
         margin: const EdgeInsets.only(top: 14),

@@ -15,6 +15,7 @@ class PlanProof {
     required this.recordedAt,
     required this.note,
     required this.sharedToFeed,
+    this.mediaUrl,
     this.mediaBytes,
     this.mediaName,
   });
@@ -22,6 +23,7 @@ class PlanProof {
   final String id;
   final PlanProofType type;
   final DateTime recordedAt;
+  final String? mediaUrl;
   final Uint8List? mediaBytes;
   final String? mediaName;
   final String note;
@@ -57,6 +59,7 @@ class PlanItem {
     required this.visibility,
     required this.photoProofRequired,
     this.completedAt,
+    this.failureMessage,
     this.seriesId,
     this.startProof,
     this.completionProof,
@@ -73,6 +76,7 @@ class PlanItem {
   final PlanVisibility visibility;
   final bool photoProofRequired;
   final DateTime? completedAt;
+  final String? failureMessage;
   final String? seriesId;
   final PlanProof? startProof;
   final PlanProof? completionProof;
@@ -89,6 +93,8 @@ class PlanItem {
     bool? photoProofRequired,
     DateTime? completedAt,
     bool clearCompletedAt = false,
+    String? failureMessage,
+    bool clearFailureMessage = false,
     String? seriesId,
     bool clearSeriesId = false,
     PlanProof? startProof,
@@ -108,6 +114,9 @@ class PlanItem {
       visibility: visibility ?? this.visibility,
       photoProofRequired: photoProofRequired ?? this.photoProofRequired,
       completedAt: clearCompletedAt ? null : completedAt ?? this.completedAt,
+      failureMessage: clearFailureMessage
+          ? null
+          : failureMessage ?? this.failureMessage,
       seriesId: clearSeriesId ? null : seriesId ?? this.seriesId,
       startProof: clearStartProof ? null : startProof ?? this.startProof,
       completionProof: clearCompletionProof

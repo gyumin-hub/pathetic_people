@@ -13,6 +13,7 @@ class ApiException implements Exception {
     required this.userMessage,
     this.statusCode,
     this.code,
+    this.fieldErrors = const {},
   });
 
   factory ApiException.network() => const ApiException(
@@ -34,6 +35,7 @@ class ApiException implements Exception {
   final String userMessage;
   final int? statusCode;
   final String? code;
+  final Map<String, String> fieldErrors;
 
   bool get isUnauthorized =>
       type == ApiExceptionType.unauthorized || statusCode == 401;

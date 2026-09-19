@@ -1,4 +1,6 @@
+import '../data/repositories/local_plan_repository.dart';
 import '../domain/repositories/app_repository.dart';
+import '../domain/repositories/plan_repository.dart';
 import '../features/auth/domain/auth_user.dart';
 import '../features/chat/view_models/chat_view_model.dart';
 import '../features/explore/view_models/explore_view_model.dart';
@@ -7,17 +9,34 @@ import '../features/planner/view_models/planner_view_model.dart';
 import '../features/profile/view_models/profile_view_model.dart';
 
 typedef ContentRepositoryFactory = AppRepository Function(int userId);
+typedef PlanRepositoryFactory = PlanRepository Function(int userId);
 
 class AppContentSession {
-  AppContentSession({required this.userId, required this.repository})
-    : feedViewModel = FeedViewModel(repository),
-      exploreViewModel = ExploreViewModel(repository),
-      plannerViewModel = PlannerViewModel(repository),
-      chatViewModel = ChatViewModel(repository),
-      profileViewModel = ProfileViewModel(repository);
+  factory AppContentSession({
+    required int userId,
+    required AppRepository repository,
+    PlanRepository? planRepository,
+  }) {
+    return AppContentSession._(
+      userId: userId,
+      repository: repository,
+      planRepository: planRepository ?? LocalPlanRepository(repository),
+    );
+  }
+
+  AppContentSession._({
+    required this.userId,
+    required this.repository,
+    required this.planRepository,
+  }) : feedViewModel = FeedViewModel(repository),
+       exploreViewModel = ExploreViewModel(repository),
+       plannerViewModel = PlannerViewModel(repository, planRepository),
+       chatViewModel = ChatViewModel(repository),
+       profileViewModel = ProfileViewModel(repository);
 
   final int userId;
   final AppRepository repository;
+  final PlanRepository planRepository;
   final FeedViewModel feedViewModel;
   final ExploreViewModel exploreViewModel;
   final PlannerViewModel plannerViewModel;
@@ -56,6 +75,7 @@ class AppContentSession {
     plannerViewModel.dispose();
     chatViewModel.dispose();
     profileViewModel.dispose();
+    planRepository.dispose();
     repository.dispose();
   }
 }

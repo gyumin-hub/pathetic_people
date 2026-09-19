@@ -17,12 +17,14 @@ class AuthSessionViewModel extends ChangeNotifier {
   bool _accountCreatedButLoginRequired = false;
   bool _isDisposed = false;
   String? _errorMessage;
+  Map<String, String> _fieldErrors = const {};
 
   AuthStatus get status => _status;
   AuthUser? get user => _user;
   bool get isSubmitting => _isSubmitting;
   bool get accountCreatedButLoginRequired => _accountCreatedButLoginRequired;
   String? get errorMessage => _errorMessage;
+  String? fieldError(String field) => _fieldErrors[field];
 
   Future<void> restoreSession() async {
     if (_isDisposed) {
@@ -31,6 +33,7 @@ class AuthSessionViewModel extends ChangeNotifier {
     _status = AuthStatus.checking;
     _accountCreatedButLoginRequired = false;
     _errorMessage = null;
+    _fieldErrors = const {};
     _notifyListeners();
 
     try {
@@ -48,10 +51,7 @@ class AuthSessionViewModel extends ChangeNotifier {
       }
       _user = null;
       _status = AuthStatus.unauthenticated;
-      _errorMessage = _messageFor(
-        error,
-        fallback: '로그인 상태를 확인하지 못했습니다. 다시 시도해 주세요.',
-      );
+      _setError(error, fallback: '로그인 상태를 확인하지 못했습니다. 다시 시도해 주세요.');
     }
 
     _notifyListeners();
@@ -81,10 +81,7 @@ class AuthSessionViewModel extends ChangeNotifier {
       }
       _user = null;
       _status = AuthStatus.unauthenticated;
-      _errorMessage = _messageFor(
-        error,
-        fallback: '로그인 처리 중 문제가 발생했습니다. 다시 시도해 주세요.',
-      );
+      _setError(error, fallback: '로그인 처리 중 문제가 발생했습니다. 다시 시도해 주세요.');
       return false;
     } finally {
       _endSubmitting();
@@ -132,12 +129,10 @@ class AuthSessionViewModel extends ChangeNotifier {
       _status = AuthStatus.unauthenticated;
       if (accountCreated) {
         _accountCreatedButLoginRequired = true;
+        _fieldErrors = const {};
         _errorMessage = '계정은 생성되었습니다. 자동 로그인에 실패했습니다. 다시 로그인해 주세요.';
       } else {
-        _errorMessage = _messageFor(
-          error,
-          fallback: '회원가입 처리 중 문제가 발생했습니다. 다시 시도해 주세요.',
-        );
+        _setError(error, fallback: '회원가입 처리 중 문제가 발생했습니다. 다시 시도해 주세요.');
       }
       return false;
     } finally {
@@ -151,6 +146,7 @@ class AuthSessionViewModel extends ChangeNotifier {
     }
     _accountCreatedButLoginRequired = false;
     _errorMessage = null;
+    _fieldErrors = const {};
     try {
       await _repository.logout();
     } catch (error) {
@@ -169,17 +165,29 @@ class AuthSessionViewModel extends ChangeNotifier {
     }
   }
 
+  void expireSession() {
+    if (_isDisposed) return;
+    _user = null;
+    _status = AuthStatus.unauthenticated;
+    _accountCreatedButLoginRequired = false;
+    _fieldErrors = const {};
+    _errorMessage = '로그인 정보가 만료되었습니다. 다시 로그인해 주세요.';
+    _notifyListeners();
+  }
+
   void clearError() {
-    if (_isDisposed || _errorMessage == null) {
+    if (_isDisposed || (_errorMessage == null && _fieldErrors.isEmpty)) {
       return;
     }
     _errorMessage = null;
+    _fieldErrors = const {};
     _notifyListeners();
   }
 
   void _beginSubmitting() {
     _isSubmitting = true;
     _errorMessage = null;
+    _fieldErrors = const {};
     _notifyListeners();
   }
 
@@ -196,6 +204,16 @@ class AuthSessionViewModel extends ChangeNotifier {
 
   String _messageFor(Object error, {required String fallback}) {
     return error is ApiException ? error.userMessage : fallback;
+  }
+
+  void _setError(Object error, {required String fallback}) {
+    if (error is ApiException && error.fieldErrors.isNotEmpty) {
+      _fieldErrors = Map.unmodifiable(error.fieldErrors);
+      _errorMessage = null;
+      return;
+    }
+    _fieldErrors = const {};
+    _errorMessage = _messageFor(error, fallback: fallback);
   }
 
   @override

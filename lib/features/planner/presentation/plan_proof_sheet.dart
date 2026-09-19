@@ -7,22 +7,40 @@ import '../../../domain/models/plan_item.dart';
 import 'planner_ui_extensions.dart';
 
 class PlanProofSheet extends StatefulWidget {
-  const PlanProofSheet({required this.plan, required this.type, super.key});
+  const PlanProofSheet({
+    required this.plan,
+    required this.type,
+    required this.supportsMediaUpload,
+    required this.onSubmit,
+    super.key,
+  });
 
   final PlanItem plan;
   final PlanProofType type;
+  final bool supportsMediaUpload;
+  final Future<String?> Function(PlanProofDraft draft) onSubmit;
 
-  static Future<PlanProofDraft?> show(
+  static Future<bool> show(
     BuildContext context, {
     required PlanItem plan,
     required PlanProofType type,
-  }) {
-    return showModalBottomSheet<PlanProofDraft>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => PlanProofSheet(plan: plan, type: type),
-    );
+    required bool supportsMediaUpload,
+    required Future<String?> Function(PlanProofDraft draft) onSubmit,
+  }) async {
+    return await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          isDismissible: false,
+          enableDrag: false,
+          builder: (context) => PlanProofSheet(
+            plan: plan,
+            type: type,
+            supportsMediaUpload: supportsMediaUpload,
+            onSubmit: onSubmit,
+          ),
+        ) ??
+        false;
   }
 
   @override
@@ -36,6 +54,8 @@ class _PlanProofSheetState extends State<PlanProofSheet> {
   Uint8List? _mediaBytes;
   String? _mediaName;
   bool _isPicking = false;
+  bool _isSubmitting = false;
+  String? _submitErrorMessage;
 
   bool get _isCompletion => widget.type == PlanProofType.completion;
 
@@ -43,7 +63,9 @@ class _PlanProofSheetState extends State<PlanProofSheet> {
       _isCompletion && (widget.plan.photoProofRequired || _sharedToFeed);
 
   bool get _canSubmit =>
-      !_isPicking && (!_requiresPhoto || _mediaBytes?.isNotEmpty == true);
+      !_isPicking &&
+      !_isSubmitting &&
+      (!_requiresPhoto || _mediaBytes?.isNotEmpty == true);
 
   bool get _supportsCamera {
     if (kIsWeb) return false;
@@ -60,7 +82,7 @@ class _PlanProofSheetState extends State<PlanProofSheet> {
   void initState() {
     super.initState();
     _noteController = TextEditingController();
-    _sharedToFeed = widget.plan.visibility == PlanVisibility.publicChallenge;
+    _sharedToFeed = false;
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _restoreLostImage());
     }
@@ -83,138 +105,160 @@ class _PlanProofSheetState extends State<PlanProofSheet> {
         ? availableHeight
         : preferredHeight;
 
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: SizedBox(
-        height: sheetHeight,
-        child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _ProofHeader(type: widget.type),
-              const SizedBox(height: 20),
-              _PlanSummary(plan: widget.plan),
-              const SizedBox(height: 24),
-              Text(
-                '인증 사진${_requiresPhoto ? ' 필수' : ''}',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _requiresPhoto
-                    ? _sharedToFeed && !widget.plan.photoProofRequired
-                          ? '피드에 공유하려면 완료 사진을 첨부해 주세요.'
-                          : '이 계획은 완료 사진을 첨부해야 제출할 수 있어요.'
-                    : '필요하면 실행 장면을 함께 남겨 보세요.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 12),
-              if (_mediaBytes == null)
-                _EmptyImagePreview(isPicking: _isPicking)
-              else
-                _ImagePreview(
-                  bytes: _mediaBytes!,
-                  mediaName: _mediaName,
-                  onRemove: _isPicking ? null : _removeImage,
-                ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isPicking
-                          ? null
-                          : _supportsCamera
-                          ? () => _pickImage(ImageSource.camera)
-                          : _showCameraUnsupported,
-                      icon: const Icon(Icons.photo_camera_outlined),
-                      label: const Text('카메라'),
+    return PopScope(
+      canPop: !_isSubmitting,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: SizedBox(
+          height: sheetHeight,
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ProofHeader(type: widget.type, canClose: !_isSubmitting),
+                const SizedBox(height: 20),
+                _PlanSummary(plan: widget.plan),
+                const SizedBox(height: 24),
+                if (widget.supportsMediaUpload) ...[
+                  Text(
+                    '인증 사진${_requiresPhoto ? ' 필수' : ''}',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _requiresPhoto
+                        ? _sharedToFeed && !widget.plan.photoProofRequired
+                              ? '피드에 공유하려면 완료 사진을 첨부해 주세요.'
+                              : '이 계획은 완료 사진을 첨부해야 제출할 수 있어요.'
+                        : '필요하면 실행 장면을 함께 남겨 보세요.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  if (_mediaBytes == null)
+                    _EmptyImagePreview(isPicking: _isPicking)
+                  else
+                    _ImagePreview(
+                      bytes: _mediaBytes!,
+                      mediaName: _mediaName,
+                      onRemove: _isPicking ? null : _removeImage,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isPicking
-                          ? null
-                          : () => _pickImage(ImageSource.gallery),
-                      icon: const Icon(Icons.photo_library_outlined),
-                      label: const Text('앨범'),
-                    ),
-                  ),
-                ],
-              ),
-              if (!_supportsCamera) ...[
-                const SizedBox(height: 7),
-                Text(
-                  '현재 환경에서는 카메라 촬영을 지원하지 않아요. '
-                  '앨범에서 사진을 선택해 주세요.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-              if (_requiresPhoto && _mediaBytes == null) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  '완료 인증 사진을 추가해야 제출할 수 있어요.',
-                  style: TextStyle(
-                    color: AppPalette.red,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 24),
-              Text('한 줄 메모', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _noteController,
-                maxLength: 60,
-                maxLines: 1,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  hintText: '예: 핑계 없이 예정대로 끝냈다',
-                  counterText: '',
-                ),
-                onTapOutside: (_) => FocusScope.of(context).unfocus(),
-              ),
-              if (_showsShareSwitch) ...[
-                const SizedBox(height: 14),
-                _ShareSwitch(
-                  type: widget.type,
-                  visibility: widget.plan.visibility,
-                  value: _sharedToFeed,
-                  onChanged: (value) {
-                    setState(() => _sharedToFeed = value);
-                  },
-                ),
-              ] else ...[
-                const SizedBox(height: 14),
-                const _PrivateStartNotice(),
-              ],
-              const SizedBox(height: 28),
-              FilledButton(
-                onPressed: _canSubmit ? _submit : null,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: _isPicking
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isPicking
+                              ? null
+                              : _supportsCamera
+                              ? () => _pickImage(ImageSource.camera)
+                              : _showCameraUnsupported,
+                          icon: const Icon(Icons.photo_camera_outlined),
+                          label: const Text('카메라'),
                         ),
-                      )
-                    : Text('${widget.type.label} 제출'),
-              ),
-            ],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isPicking
+                              ? null
+                              : () => _pickImage(ImageSource.gallery),
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: const Text('앨범'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!_supportsCamera) ...[
+                    const SizedBox(height: 7),
+                    Text(
+                      '현재 환경에서는 카메라 촬영을 지원하지 않아요. '
+                      '앨범에서 사진을 선택해 주세요.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                  if (_requiresPhoto && _mediaBytes == null) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      '완료 인증 사진을 추가해야 제출할 수 있어요.',
+                      style: TextStyle(
+                        color: AppPalette.red,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ] else ...[
+                  const _MediaUploadUnavailable(),
+                ],
+                const SizedBox(height: 24),
+                Text('한 줄 메모', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _noteController,
+                  maxLength: 60,
+                  maxLines: 1,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(
+                    hintText: '예: 핑계 없이 예정대로 끝냈다',
+                    counterText: '',
+                  ),
+                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
+                ),
+                if (_showsShareSwitch) ...[
+                  const SizedBox(height: 14),
+                  _ShareSwitch(
+                    type: widget.type,
+                    visibility: widget.plan.visibility,
+                    value: _sharedToFeed,
+                    mediaUploadSupported: widget.supportsMediaUpload,
+                    onChanged: _isCompletion && !widget.supportsMediaUpload
+                        ? null
+                        : (value) {
+                            setState(() => _sharedToFeed = value);
+                          },
+                  ),
+                ] else ...[
+                  const SizedBox(height: 14),
+                  const _PrivateStartNotice(),
+                ],
+                const SizedBox(height: 28),
+                if (_submitErrorMessage != null) ...[
+                  Text(
+                    _submitErrorMessage!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppPalette.red,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                FilledButton(
+                  onPressed: _canSubmit ? _submit : null,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _isPicking || _isSubmitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text('${widget.type.label} 제출'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -289,28 +333,41 @@ class _PlanProofSheetState extends State<PlanProofSheet> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     if (!_canSubmit) {
       _showError('완료 인증 사진을 먼저 추가해 주세요.');
       return;
     }
-    Navigator.of(context).pop(
-      PlanProofDraft(
-        type: widget.type,
-        mediaBytes: _mediaBytes,
-        mediaName: _mediaName,
-        note: _noteController.text.trim(),
-        sharedToFeed: _sharedToFeed,
-      ),
+    final draft = PlanProofDraft(
+      type: widget.type,
+      mediaBytes: _mediaBytes,
+      mediaName: _mediaName,
+      note: _noteController.text.trim(),
+      sharedToFeed: _sharedToFeed,
     );
+    setState(() {
+      _isSubmitting = true;
+      _submitErrorMessage = null;
+    });
+    final errorMessage = await widget.onSubmit(draft);
+    if (!mounted) return;
+    if (errorMessage == null) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    setState(() {
+      _isSubmitting = false;
+      _submitErrorMessage = errorMessage;
+    });
   }
 }
 
 class _ProofHeader extends StatelessWidget {
-  const _ProofHeader({required this.type});
+  const _ProofHeader({required this.type, required this.canClose});
 
   final PlanProofType type;
+  final bool canClose;
 
   @override
   Widget build(BuildContext context) {
@@ -336,7 +393,7 @@ class _ProofHeader extends StatelessWidget {
         ),
         IconButton(
           tooltip: '닫기',
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: canClose ? () => Navigator.of(context).pop() : null,
           icon: const Icon(Icons.close_rounded),
         ),
       ],
@@ -508,18 +565,53 @@ class _ImagePreview extends StatelessWidget {
   }
 }
 
+class _MediaUploadUnavailable extends StatelessWidget {
+  const _MediaUploadUnavailable();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppPalette.line),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.cloud_upload_outlined,
+            size: 20,
+            color: AppPalette.muted,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '사진 업로드 API는 아직 준비 중이에요. 지금은 사진이 필요 없는 인증만 서버에 저장할 수 있어요.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ShareSwitch extends StatelessWidget {
   const _ShareSwitch({
     required this.type,
     required this.visibility,
     required this.value,
+    required this.mediaUploadSupported,
     required this.onChanged,
   });
 
   final PlanProofType type;
   final PlanVisibility visibility;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final bool mediaUploadSupported;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -539,6 +631,8 @@ class _ShareSwitch extends StatelessWidget {
         subtitle: Text(
           isStart
               ? '시작 인증은 도전 중 표시만 남기고 피드 게시물은 만들지 않아요.'
+              : !mediaUploadSupported
+              ? '사진 업로드 API가 연결된 뒤 완료 인증을 피드에 공유할 수 있어요.'
               : visibility == PlanVisibility.private
               ? '켜면 개인 계획의 성공 결과도 피드에 공유해요.'
               : '완료 사진과 메모를 성공 게시물로 공유해요.',

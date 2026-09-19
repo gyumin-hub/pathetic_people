@@ -22,7 +22,7 @@ void main() {
 
       await apiClient.signUp(
         nickname: '  민수  ',
-        email: '  minsu@example.com ',
+        email: '  MinSu@Example.com ',
         password: 'password123',
       );
 
@@ -45,6 +45,7 @@ void main() {
     test('login returns the access token', () async {
       final client = MockClient((request) async {
         expect(request.url.path, '/api/auth/login');
+        expect(jsonDecode(request.body)['email'], 'minsu@example.com');
         return _jsonResponse({
           'accessToken': 'jwt-token',
           'tokenType': 'Bearer',
@@ -58,7 +59,7 @@ void main() {
       );
 
       final token = await apiClient.login(
-        email: 'minsu@example.com',
+        email: '  MinSu@Example.com ',
         password: 'password123',
       );
 
@@ -124,7 +125,10 @@ void main() {
                 (error) => error.userMessage,
                 'userMessage',
                 '비밀번호는 8자 이상이어야 합니다.',
-              ),
+              )
+              .having((error) => error.fieldErrors, 'fieldErrors', {
+                'password': '비밀번호는 8자 이상이어야 합니다.',
+              }),
         ),
       );
     });

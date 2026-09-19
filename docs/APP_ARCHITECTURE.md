@@ -26,7 +26,7 @@ lib/
 ├─ main.dart
 ├─ app/
 │  ├─ motive_app.dart             # 인증 게이트와 앱 최상위 조립
-│  ├─ motive_shell.dart           # 5개 탭과 로컬 실패 검사 생명주기
+│  ├─ motive_shell.dart           # 5개 탭과 계획 상태 새로고침 생명주기
 │  └─ app_content_session.dart    # 로그인 사용자별 콘텐츠 상태 수명
 ├─ core/
 │  ├─ config/                     # API 주소 등 실행 환경
@@ -40,12 +40,13 @@ lib/
 │  ├─ repositories/               # 콘텐츠 데이터 계약
 │  └─ services/                   # 독설 생성 같은 도메인 규칙
 ├─ data/repositories/
-│  └─ mock_app_repository.dart    # 현재 콘텐츠 전체의 메모리 구현
+│  ├─ mock_app_repository.dart    # 아직 원격화되지 않은 콘텐츠의 메모리 구현
+│  └─ local_plan_repository.dart  # 테스트/데모용 async 계획 어댑터
 └─ features/
    ├─ auth/{data,domain,presentation,view_models}
    ├─ feed/{presentation,view_models}
    ├─ explore/{presentation,view_models}
-   ├─ planner/{presentation,view_models}
+   ├─ planner/{data,presentation,view_models}
    ├─ chat/{presentation,view_models}
    └─ profile/{presentation,view_models}
 ```
@@ -64,10 +65,11 @@ main.dart
           └─ authenticated   -> AppContentSession -> MotiveShell
 ```
 
-`AppContentSession`은 로그인 사용자 ID와 콘텐츠 repository 하나를 소유하고, 같은
-repository를 피드·탐색·계획·채팅·프로필 ViewModel에 주입합니다. 로그아웃하거나 다른
-사용자가 로그인하면 이전 세션과 ViewModel을 모두 dispose하고 새 세션을 만듭니다. 이로써
-Mock 데이터라도 계정 A의 상태가 계정 B 화면에 그대로 보이지 않게 합니다.
+`AppContentSession`은 로그인 사용자 ID, 공용 `AppRepository`, 기능별 `PlanRepository`를
+소유합니다. 피드·탐색·채팅·프로필은 아직 공용 Mock을 사용하고, 기본 앱 실행의 계획 탭은
+`RemotePlanRepository`를 사용합니다. 로그아웃하거나 다른 사용자가 로그인하면 이전
+repository, HTTP client, ViewModel을 모두 dispose하고 새 세션을 만듭니다. 테스트에서 인증
+repository만 주입한 경우에는 네트워크가 시작되지 않도록 `LocalPlanRepository`를 사용합니다.
 
 ## 4. 계층 책임
 
@@ -110,14 +112,38 @@ AuthPage
 - 보안 저장 키 `auth_access_token`
 - 앱 시작 시 저장 토큰으로 `/me` 확인
 - 401이면 저장 토큰 삭제, 일시적 네트워크/5xx면 토큰 보존
+- 로그인 후 계획 API가 401을 반환해도 저장 토큰을 삭제하고 인증 화면으로 복귀
 - 회원가입 성공 후 자동 로그인하며, 자동 로그인만 실패한 경우 로그인 화면으로 안내
 
 화면 입력 기준은 이메일 형식과 100자 이하, 비밀번호 8자 이상, 회원가입 닉네임 2~20자입니다.
+회원가입에서는 비밀번호를 두 번 입력해 일치 여부를 확인하고, 이메일은 소문자로 정규화해
+전송합니다. 서버 validation의 `fieldErrors`는 이메일·비밀번호·닉네임 입력칸 아래에 각각
+표시하며 연결/인증 같은 공통 오류만 폼 공통 영역에 표시합니다.
 
-## 6. 콘텐츠: 현재 Mock 기능
+## 6. 콘텐츠: 원격 계획 + 나머지 Mock
 
-`AppRepository` 하나가 사용자, 환경설정, 게시물, 탐색, 계획, 채팅 목록과 변경 명령을
-제공합니다. 실제 구현은 `MockAppRepository`입니다.
+`AppRepository`는 사용자, 환경설정, 게시물, 탐색, 채팅과 기존 로컬 계획 데모를
+제공하며 실제 구현은 `MockAppRepository`입니다. 운영 기본 조립에서 계획 화면만 별도 async
+`PlanRepository`를 사용합니다.
+
+### 원격 계획 흐름
+
+```text
+PlannerPage / Sheet
+  -> PlannerViewModel (loading, error, retry, duplicate-submit guard)
+  -> RemotePlanRepository
+  -> PlanApiClient + 매 요청 SecureAuthTokenStore JWT 읽기
+  -> Spring /api/v1/plans/**
+```
+
+- 세 달 이하 범위를 `from` 포함, `to` 미포함으로 조회합니다.
+- `occurrenceId`는 `PlanItem.id`, `planId`는 반복 묶음 `seriesId`로 매핑합니다.
+- 요청 시각은 UTC `Z`가 포함된 ISO-8601로 전송하고 응답은 로컬 시각으로 변환합니다.
+- 생성 뒤에는 서버가 반환한 첫 회차만 붙이지 않고 현재 범위를 다시 조회해 반복 회차를 받습니다.
+- 서버에 수정·삭제 endpoint가 없어 원격 화면에서는 해당 동작을 노출하지 않습니다.
+- 텍스트 기반 시작 인증과 사진이 필요 없는 비공유 완료 인증은 서버에 저장합니다.
+- 앱이 가진 사진 bytes를 `mediaUrl`로 바꾸는 업로드 API가 없어 사진 필수 완료와 사진 공유는
+  구체적인 안내와 함께 차단합니다.
 
 ### 주요 모델
 
@@ -129,7 +155,7 @@ AuthPage
 | `ChatRoom/ChatMessage` | direct/group/system 방과 메시지 |
 | `AppPreferences` | 푸시, 실패 공개, 단체방 알림, 독설 강도 |
 
-### 로컬 실패 판정
+### 테스트/데모 로컬 실패 판정
 
 앱 실행 직후, 1분마다, 앱이 foreground로 돌아올 때, 계획 탭을 선택할 때 기한 지난 계획을
 검사합니다. 이는 데모 UX이고 운영 서버 배치나 OS 푸시가 아닙니다.
@@ -143,19 +169,15 @@ AuthPage
 
 Mock 반복 일정은 60일 범위를 만들고 남은 범위가 30일 이내일 때 연장합니다.
 
-## 7. 서버 연결 시 바꿔야 할 점
+## 7. 기능별 서버 연결 방식
 
-현재 콘텐츠 계약은 메모리 변경을 가정해 대부분 `void` 동기 메서드입니다. HTTP는 실패와
-대기가 있으므로 단순히 `MockAppRepository`의 내부만 HTTP로 바꾸면 로딩·오류·재시도 상태를
-표현하기 어렵습니다.
+계획 연결에서 적용한 다음 방식을 이후 피드·알림·소셜 기능에도 반복합니다.
 
-권장 단계는 다음과 같습니다.
-
-1. 기능별 async repository 계약을 만듭니다. 예: `PlanRepository`.
+1. 기능별 async repository 계약을 만듭니다.
 2. API request/response DTO와 앱 domain 모델을 분리합니다.
-3. `core/network`의 인증 헤더·오류 매핑을 공통으로 사용합니다.
-4. ViewModel이 `loading/data/error`와 중복 제출 방지를 소유합니다.
-5. UI는 ViewModel 상태만 그립니다.
+3. HTTP client가 저장소에서 JWT를 매 요청 읽고 공통 오류 형태로 변환합니다.
+4. ViewModel이 `loading/data/error`, 재시도, 중복 제출과 stale 응답 무시를 소유합니다.
+5. UI는 ViewModel state/capability만 그립니다.
 6. 해당 기능 테스트가 통과하면 그 기능만 Mock에서 원격으로 전환합니다.
 
 중요한 모델 차이도 먼저 해결합니다.
@@ -180,8 +202,15 @@ API 주소는 `AppEnvironment`가 결정합니다.
 다른 주소는 실행 시 주입합니다.
 
 ```bash
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
+flutter run \
+  --dart-define=API_BASE_URL=http://10.0.2.2:8080 \
+  --dart-define=APP_TIMEZONE=Asia/Seoul
 ```
+
+`APP_TIMEZONE`은 계획 생성 요청의 IANA 시간대입니다. 생략하면 `Asia/Seoul`을 사용하며,
+다른 지역에서 개발하거나 서비스할 때는 `America/Los_Angeles`처럼 실제 사용자 지역의
+IANA 이름을 주입합니다. 운영에서는 기기 설정을 IANA 이름으로 해석하는 방식이 추가로
+필요합니다.
 
 개발자의 LAN IP나 사용자 폴더 절대경로를 Dart 소스에 넣지 않습니다.
 

@@ -152,6 +152,33 @@ void main() {
       expect(viewModel.errorMessage, '이미 사용 중인 이메일입니다.');
     });
 
+    test(
+      'signUp exposes server validation beside the matching field',
+      () async {
+        final repository = FakeAuthRepository()
+          ..signUpError = const ApiException(
+            type: ApiExceptionType.request,
+            userMessage: '이미 사용 중인 이메일입니다.',
+            statusCode: 409,
+            fieldErrors: {'email': '이미 사용 중인 이메일입니다.'},
+          );
+        final viewModel = AuthSessionViewModel(repository);
+
+        final success = await viewModel.signUp(
+          nickname: '민수',
+          email: 'minsu@example.com',
+          password: 'password123',
+        );
+
+        expect(success, isFalse);
+        expect(viewModel.errorMessage, isNull);
+        expect(viewModel.fieldError('email'), '이미 사용 중인 이메일입니다.');
+
+        viewModel.clearError();
+        expect(viewModel.fieldError('email'), isNull);
+      },
+    );
+
     test('clearError removes the current error', () async {
       final repository = FakeAuthRepository()
         ..loginError = StateError('storage failed');
@@ -177,6 +204,21 @@ void main() {
       expect(repository.calls, ['login', 'logout']);
       expect(viewModel.status, AuthStatus.unauthenticated);
       expect(viewModel.user, isNull);
+    });
+
+    test('expireSession returns an authenticated shell to login', () async {
+      final repository = FakeAuthRepository()..loginResult = user;
+      final viewModel = AuthSessionViewModel(repository);
+      await viewModel.login(
+        email: 'minsu@example.com',
+        password: 'password123',
+      );
+
+      viewModel.expireSession();
+
+      expect(viewModel.status, AuthStatus.unauthenticated);
+      expect(viewModel.user, isNull);
+      expect(viewModel.errorMessage, contains('만료'));
     });
 
     test('slow restore completion after dispose is ignored safely', () async {

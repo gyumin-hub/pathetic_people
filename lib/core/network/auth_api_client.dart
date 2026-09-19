@@ -46,7 +46,7 @@ class AuthApiClient {
       '/api/auth/signup',
       body: {
         'nickname': nickname.trim(),
-        'email': email.trim(),
+        'email': email.trim().toLowerCase(),
         'password': password,
       },
     );
@@ -59,7 +59,7 @@ class AuthApiClient {
   }) async {
     final response = await _postJson(
       '/api/auth/login',
-      body: {'email': email.trim(), 'password': password},
+      body: {'email': email.trim().toLowerCase(), 'password': password},
     );
     _throwIfRequestFailed(
       response,
@@ -150,6 +150,7 @@ class AuthApiClient {
         userMessage: serverError.userMessage,
         statusCode: response.statusCode,
         code: serverError.code,
+        fieldErrors: serverError.fieldErrors,
       );
     }
 
