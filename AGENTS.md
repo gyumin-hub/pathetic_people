@@ -25,13 +25,13 @@
   behavior or cross-repository contracts.
 - Read [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md) before changing Flutter
   structure or state flow.
-- Read [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) for Mac/Windows, MySQL,
+- Read [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) for Mac/Windows, Supabase PostgreSQL,
   API-address, and Git setup.
 - Server API and DB details live in the sibling repository at
   `../pathetic_people_server/docs/SERVER_ARCHITECTURE.md` and
   `../pathetic_people_server/docs/DATABASE_SCHEMA.md`.
 
-## Verified baseline (2026-08-25)
+## Verified baseline (2026-09-19)
 
 - Team Flutter baseline: `3.47.1 stable`; declared minimum: `>=3.44.0`.
 - Team Dart baseline: `3.13.1`; declared constraint: `^3.12.0`.
@@ -39,7 +39,7 @@
 - Android: compile SDK 37, target SDK 36, min SDK 24, Java bytecode 17,
   Gradle 8.14, AGP 8.11.1, Kotlin 2.2.20.
 - Direct packages are locked in `pubspec.lock`; do not hand-edit the lockfile.
-- Server baseline: Java 17 target, Spring Boot 4.0.6, MySQL 8.0/8.4.
+- Server baseline: Java 17 target, Spring Boot 4.0.6, Supabase-managed PostgreSQL.
 
 When versions change, update this file, `docs/PROJECT_CONTEXT.md`, and the relevant
 setup/architecture document in the same commit.
@@ -78,8 +78,8 @@ setup/architecture document in the same commit.
 
 ## Server-integration rules
 
-- The app never connects directly to MySQL. The only valid path is
-  `Flutter -> Spring HTTP API -> MySQL`.
+- The app never connects directly to PostgreSQL. The only valid path is
+  `Flutter -> Spring HTTP API -> Supabase PostgreSQL`.
 - API base URL comes from `--dart-define=API_BASE_URL=...`; do not hardcode a developer
   machine address in Dart source.
 - Android emulator localhost is `http://10.0.2.2:8080`; macOS/iOS simulator/web use

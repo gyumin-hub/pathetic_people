@@ -25,7 +25,7 @@
 ## 개발환경 준비
 
 Flutter 앱과 Spring Boot 서버는 별도 저장소입니다. Mac·Windows에서 두 저장소를
-받는 방법, MySQL 준비, 비밀 설정, Flyway 규칙, 에뮬레이터별 API 주소는
+받는 방법, Supabase PostgreSQL 준비, 비밀 설정, Flyway 규칙, 에뮬레이터별 API 주소는
 [Mac·Windows 개발환경 준비](docs/DEVELOPMENT_SETUP.md)에 정리되어 있습니다.
 
 프로젝트 구조와 버전은 Git 문서로 관리합니다. 루트 `AGENTS.md`는 이 저장소를 Codex에서
@@ -41,9 +41,9 @@ Flutter 앱과 Spring Boot 서버는 별도 저장소입니다. Mac·Windows에�
 ## 앱 실행하기
 
 현재 앱은 로그인에 성공해야 피드·계획·채팅·프로필 화면으로 들어갈 수 있는 인증 게이트
-구조입니다. MySQL과 Spring 서버가 꺼진 상태에서도 앱 자체는 실행되지만 로그인·회원가입
+구조입니다. PostgreSQL 연결이나 Spring 서버가 꺼진 상태에서도 앱 자체는 실행되지만 로그인·회원가입
 화면까지만 확인할 수 있고, 로그인 요청과 자동 로그인은 실패합니다. 기존 로컬 기능이 있는
-5개 탭까지 확인하려면 MySQL과 Spring 서버를 먼저 실행한 뒤 로그인해야 합니다.
+5개 탭까지 확인하려면 Spring 서버를 먼저 실행한 뒤 로그인해야 합니다.
 
 기본 Flutter 확인 명령은 다음과 같습니다.
 

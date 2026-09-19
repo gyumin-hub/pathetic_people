@@ -1,6 +1,6 @@
 # Motive 프로젝트 기준 문서
 
-마지막 실제 코드 대조일: **2026-08-25**
+마지막 실제 코드 대조일: **2026-09-19**
 
 이 문서는 앱·서버를 함께 개발할 때 사용하는 제품 및 저장소 전체의 기준 문서입니다.
 기능 범위나 기술 버전이 바뀌면 코드와 같은 커밋에서 이 문서도 갱신합니다.
@@ -107,7 +107,7 @@ clone/pull하고 그 루트를 Codex에서 열면 규칙을 참고하지만, 같
 ```text
 IdeaProjects 또는 C:\dev
 ├─ pathetic_people          # Flutter 앱
-└─ pathetic_people_server   # Spring Boot API + Flyway + MySQL 접근
+└─ pathetic_people_server   # Spring Boot API + Flyway + Supabase PostgreSQL 접근
 ```
 
 | 저장소 | 원격 | 책임 |
@@ -115,10 +115,10 @@ IdeaProjects 또는 C:\dev
 | Flutter | `gyumin-hub/pathetic_people` | Android/iOS/macOS/web UI, 상태, API 호출, 보안 토큰 저장 |
 | Spring | `gyumin-hub/pathetic_people_server` | 인증, 업무 규칙, MyBatis SQL, 스케줄러, DB 마이그레이션 |
 
-앱은 MySQL에 직접 접속하지 않습니다.
+앱은 PostgreSQL에 직접 접속하지 않습니다.
 
 ```text
-Flutter -> HTTP/JSON + JWT -> Spring Boot -> MyBatis -> MySQL
+Flutter -> HTTP/JSON + JWT -> Spring Boot -> MyBatis -> Supabase PostgreSQL
 ```
 
 ## 7. 공유 기술 기준
@@ -137,8 +137,8 @@ Flutter -> HTTP/JSON + JWT -> Spring Boot -> MyBatis -> MySQL
 | Gradle | 앱 8.14 / 서버 9.4.1 | 각 wrapper에 고정 |
 | AGP / Kotlin | 8.11.1 / 2.2.20 | 앱 Android 설정에 고정 |
 | Android SDK | compile 37 / target 36 / min 24 | API 37 설치 확인 |
-| MySQL | 8.0과 8.4 호환 SQL | Mac 8.4.11, Windows 기존 8.0 사용 |
-| DB 이름/포트 | `pathetic_people` / 3306 | 각 PC의 로컬 DB |
+| PostgreSQL | Supabase-managed PostgreSQL | 실제 버전은 프로젝트에서 확인 |
+| DB/스키마 | `postgres` / `motive` | 두 PC가 같은 원격 DB 사용 |
 | Spring 포트 | 8080 | `application.properties` |
 
 정확한 앱 패키지는 `pubspec.lock`, 서버 라이브러리는 Gradle dependency resolution이
@@ -215,7 +215,7 @@ Flutter -> HTTP/JSON + JWT -> Spring Boot -> MyBatis -> MySQL
 다음이 바뀌면 문서를 같은 커밋에서 갱신합니다.
 
 - API 경로, JSON 필드, 상태 enum, 인증 방식
-- DB migration, 테이블 관계, MySQL 지원 버전
+- DB migration, 테이블 관계, PostgreSQL/Supabase 연결 기준
 - Flutter/Java/Spring/Android 주요 버전
 - 실제 서버 연결과 Mock의 경계
 - 제품 공개 규칙, 독설 수위와 안전 정책
@@ -230,5 +230,5 @@ Flutter -> HTTP/JSON + JWT -> Spring Boot -> MyBatis -> MySQL
 - 금지: DB 비밀번호, JWT/OAuth secret, 액세스 토큰, keystore, 운영 인증서, 실제 사용자
   데이터가 든 DB dump
 
-Git은 코드와 DB **구조**를 동기화하지만 로컬 DB의 회원·계획 같은 **행 데이터**를
-동기화하지 않습니다.
+Flyway migration은 DB **구조**를 동기화하고, Mac과 Windows는 같은 Supabase DB를 사용해
+회원·계획 같은 **행 데이터**도 공유합니다.

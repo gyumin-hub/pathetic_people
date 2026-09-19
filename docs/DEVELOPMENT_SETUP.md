@@ -16,8 +16,8 @@ IdeaProjects 또는 C:\dev
 └── pathetic_people_server   # Spring Boot 서버 + Flyway SQL
 ```
 
-Mac과 Windows의 MySQL 데이터는 서로 자동으로 복사되지 않습니다. 대신 서버 저장소의
-Flyway SQL을 Git으로 공유해 테이블 구조만 같게 유지합니다.
+Mac과 Windows는 같은 Supabase PostgreSQL 프로젝트에 접속하므로 회원·계획 같은 실제
+데이터를 공유합니다. DB 구조는 서버 저장소의 Flyway SQL로 관리합니다.
 
 ## 1. Codex 프로젝트 지침도 Git으로 받기
 
@@ -46,9 +46,9 @@ Flyway SQL을 Git으로 공유해 테이블 구조만 같게 유지합니다.
   - 앱과 서버의 컴파일 언어 수준은 Java 17입니다.
   - 현재 Mac 터미널 JDK는 26.0.2지만 Windows가 이를 똑같이 설치할 필요는 없습니다.
 - Android Studio와 Android 에뮬레이터
-- MySQL 8
-  - 현재 Mac 프로젝트 전용 DB: MySQL 8.4.11
-  - 현재 Windows PC: 설치되어 있는 MySQL 8.0을 그대로 사용 가능
+- Supabase 계정과 프로젝트
+  - 두 PC에서 같은 프로젝트의 Session pooler 접속 정보를 사용합니다.
+  - 로컬 PostgreSQL 설치는 필수가 아닙니다.
 
 설치 후 터미널 또는 PowerShell에서 확인합니다.
 
@@ -119,60 +119,20 @@ git pull --ff-only
 `git status`에 내가 수정한 파일이 나온다면 바로 pull하지 말고 먼저 커밋하거나 안전하게
 보관합니다. 앱만 pull하고 서버를 빼먹으면 API 형식이나 DB 구조가 맞지 않을 수 있습니다.
 
-## 4. MySQL 준비
+## 4. Supabase PostgreSQL 준비
 
-### 현재 Mac: 프로젝트 전용 MySQL 8.4
+1. Supabase에서 프로젝트 하나를 생성합니다.
+2. Dashboard 상단의 `Connect`를 엽니다.
+3. 일반적인 IPv4 개발 환경에서는 `Session pooler`를 선택합니다.
+4. 표시된 host, port, database, username을 복사합니다.
+5. DB 비밀번호는 비밀 설정 파일에만 입력합니다.
 
-현재 Mac에는 서버 폴더의 `.local/mysql`에 프로젝트 전용 MySQL이 준비되어 있습니다.
-서버 저장소 폴더에서 다음 스크립트로 시작합니다.
+Supabase 프로젝트의 기본 DB 이름은 보통 `postgres`, Session pooler 포트는 `5432`입니다.
+호스트와 username에는 프로젝트별 값이 들어가므로 문서 예시를 조합하지 말고 Dashboard 값을
+그대로 사용합니다. 서버가 처음 연결되면 Flyway가 비공개 `motive` 스키마를 만듭니다.
 
-```bash
-cd /Users/pjh/IdeaProjects/pathetic_people_server
-./scripts/local-db/start-macos.sh
-```
-
-정상 실행되면 `MySQL이 시작되었습니다. (127.0.0.1:3306, ...)`가 출력됩니다. 개발이
-끝난 뒤 MySQL만 종료하려면 다음 명령을 사용합니다.
-
-```bash
-cd /Users/pjh/IdeaProjects/pathetic_people_server
-./scripts/local-db/stop-macos.sh
-```
-
-`.local` 폴더는 Git에 올라가지 않으므로 새 Mac에 저장소만 clone하면 MySQL 실행 파일과
-데이터가 따라오지 않습니다. 위 start/stop 스크립트는 현재 준비된 Mac 환경용입니다.
-
-### Windows: 기존 MySQL 8.0 사용
-
-Windows PC의 MySQL 8.0은 지금 다시 설치하지 않아도 됩니다. MySQL 서비스가 실행
-중인지 관리자 PowerShell에서 확인합니다. 서비스 이름은 설치 방법에 따라 다를 수 있습니다.
-
-```powershell
-Get-Service *mysql*
-Start-Service MySQL80
-```
-
-`Start-Service MySQL80`에서 이름을 찾지 못하면 `Get-Service *mysql*` 결과에 나온 실제
-서비스 이름을 사용합니다. 그다음 MySQL Command Line Client 또는 PowerShell에서 접속합니다.
-
-```powershell
-mysql -u root -p
-```
-
-`-p` 뒤에 비밀번호를 명령문으로 붙이지 말고, MySQL이 물어볼 때 입력합니다. 최초 한 번만
-빈 데이터베이스를 만듭니다.
-
-```sql
-CREATE DATABASE IF NOT EXISTS pathetic_people
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-SHOW DATABASES LIKE 'pathetic_people';
-EXIT;
-```
-
-Mac과 PC의 `pathetic_people` 안에 저장되는 회원·계획 데이터는 서로 다릅니다. 이것은
-정상입니다. Git과 Flyway가 맞추는 것은 데이터가 아니라 테이블·컬럼 구조입니다.
+Mac과 Windows가 같은 접속값을 사용하므로 두 PC에서 만든 회원·계획 데이터가 공유됩니다.
+Flutter는 DB에 직접 연결하지 않고 항상 Spring API를 거칩니다.
 
 ## 5. 서버 비밀 설정 만들기
 
@@ -202,9 +162,9 @@ if (-not (Test-Path .\src\main\resources\application-secret.properties)) {
 `application-secret.properties` 안의 자리표시자만 해당 컴퓨터의 값으로 바꿉니다.
 
 ```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/pathetic_people?useSSL=false&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&preserveInstants=true&characterEncoding=UTF-8
-spring.datasource.username=root
-spring.datasource.password=YOUR_LOCAL_MYSQL_PASSWORD
+spring.datasource.url=jdbc:postgresql://YOUR_POOLER_HOST:5432/postgres?sslmode=require
+spring.datasource.username=postgres.YOUR_PROJECT_REF
+spring.datasource.password=YOUR_SUPABASE_DATABASE_PASSWORD
 jwt.secret=YOUR_32_BYTE_OR_LONGER_RANDOM_SECRET
 ```
 
@@ -225,7 +185,7 @@ Flyway는 서버가 시작될 때 버전 순서대로 SQL 파일을 한 번씩 �
 도구입니다. 파일 위치는 서버 저장소의 다음 경로입니다.
 
 ```text
-src/main/resources/db/migration/
+src/main/resources/db/migration-postgresql/
 ├── V1__legacy_schema.sql   # users 등 기존 기본 테이블
 └── V2__motive_core.sql     # plans, proofs, posts, notifications 등 핵심 테이블
 ```
@@ -242,11 +202,11 @@ V4__create_example_table.sql
 
 1. 이미 한 번 적용한 `V1`과 `V2`는 수정하거나 이름을 바꾸지 않습니다.
 2. 새 테이블·컬럼·인덱스는 다음 번호인 `V3`, `V4` 파일로 추가합니다.
-3. Mac MySQL에서만 `ALTER TABLE`을 직접 실행하지 않습니다. 반드시 Flyway SQL로 남깁니다.
+3. Supabase SQL Editor에서만 `ALTER TABLE`을 실행하지 않습니다. 반드시 Flyway SQL로 남깁니다.
 4. Flyway SQL을 서버 저장소에 커밋하고 PC에서 pull한 뒤 서버를 실행합니다.
-5. 그러면 PC DB에도 아직 없는 버전만 순서대로 적용됩니다.
+5. 그러면 공용 Supabase DB에 아직 없는 버전만 순서대로 적용됩니다.
 
-적용 결과는 MySQL에서 확인할 수 있습니다.
+적용 결과는 Supabase SQL Editor에서 확인할 수 있습니다.
 
 ```sql
 SELECT installed_rank, version, description, success
@@ -254,14 +214,13 @@ FROM flyway_schema_history
 ORDER BY installed_rank;
 ```
 
-새 빈 DB에서는 `FLYWAY_BASELINE_ON_MIGRATE`를 설정하지 않습니다. Flyway 도입 전에 수동
-생성한 기존 DB를 처음 전환할 때만 `FLYWAY_BASELINE_ON_MIGRATE=true`를 한 번 검토합니다.
+새 Supabase DB에서는 `FLYWAY_BASELINE_ON_MIGRATE=false`를 유지합니다.
 체크섬 오류가 발생했을 때 migration 파일이나 `flyway_schema_history`를 임의로 지우지 말고
 먼저 어떤 적용 완료 파일이 변경됐는지 확인합니다.
 
 ## 7. Spring Boot 서버 실행
 
-MySQL이 먼저 실행 중이어야 합니다.
+Supabase 프로젝트가 실행 중이고 인터넷 연결이 가능해야 합니다.
 
 ### Mac
 
@@ -372,15 +331,13 @@ Mac 서버와 통신하려면 `허용`을 선택합니다. 이 안내 문구는 
 처음 설정을 끝낸 뒤에는 다음 순서만 지키면 됩니다.
 
 1. 앱 저장소와 서버 저장소에서 `git status`를 확인하고 `git pull --ff-only` 합니다.
-2. MySQL을 시작합니다. 현재 Mac은 `./scripts/local-db/start-macos.sh`, Windows는 MySQL
-   서비스를 사용합니다.
+2. 각 PC의 Git 제외 secret 파일에 Supabase 접속값이 있는지 확인합니다.
 3. 서버 폴더에서 `./gradlew bootRun` 또는 `.\gradlew.bat bootRun`을 실행합니다.
 4. Flyway 완료와 서버 `8080` 시작 로그가 나올 때까지 기다립니다.
 5. Android 에뮬레이터 또는 테스트 기기를 켭니다.
 6. 앱 폴더에서 `flutter pub get`을 실행합니다.
 7. 대상에 맞는 `API_BASE_URL`로 `flutter run`을 실행합니다.
 8. 종료할 때 앱과 서버 터미널에서 `Ctrl+C`를 누릅니다.
-9. 현재 Mac의 프로젝트 전용 MySQL을 끄려면 `./scripts/local-db/stop-macos.sh`를 실행합니다.
 
 데이터 흐름은 다음과 같습니다.
 
@@ -388,32 +345,12 @@ Mac 서버와 통신하려면 `허용`을 선택합니다. 이 안내 문구는 
 Flutter 입력
 -> API_BASE_URL의 Spring 서버:8080
 -> application-secret.properties의 접속 정보
--> 로컬 MySQL:3306
+-> Supabase PostgreSQL의 motive 스키마
 -> JSON 응답
 -> Flutter 화면 갱신
 ```
 
 ## 10. 자주 생기는 포트 충돌
-
-### `3306` 충돌
-
-`3306`은 MySQL 기본 포트입니다. 시스템 MySQL과 프로젝트 전용 MySQL을 동시에 켜면
-둘 중 하나가 시작되지 않습니다.
-
-Mac 확인:
-
-```bash
-lsof -nP -iTCP:3306 -sTCP:LISTEN
-```
-
-Windows 확인:
-
-```powershell
-netstat -ano | findstr :3306
-```
-
-현재 사용 중인 MySQL을 확인한 뒤 하나만 실행합니다. 어떤 프로세스인지 확인하지 않고
-강제 종료하지 않습니다.
 
 ### `8080` 충돌
 
@@ -442,16 +379,15 @@ netstat -ano | findstr :8080
 - Flutter의 `lib/`, `test/`, 필요한 플랫폼 설정 코드
 - `pubspec.yaml`, `pubspec.lock`
 - 서버의 Java 코드, Mapper XML, 테스트 코드
-- `src/main/resources/db/migration/V숫자__설명.sql` Flyway 파일
+- `src/main/resources/db/migration-postgresql/V숫자__설명.sql` Flyway 파일
 - 자리표시자만 있는 `application-secret.properties.example`
-- Mac 로컬 DB start/stop 스크립트
 - README와 `docs/`의 공통 개발 문서
 
 ### Git에 올리면 안 되는 것
 
 - 실제 값이 든 `application-secret.properties`
 - 실제 DB 비밀번호, JWT 키, OAuth client secret이 들어간 파일·문서·메모
-- 서버의 `.local/` MySQL 실행 파일과 데이터
+- DB dump와 Supabase connection string
 - Flutter의 `.dart_tool/`, `build/`, Gradle의 `.gradle/` 같은 생성물
 - 개인 IDE 설정인 `.idea/`, `.vscode/`
 - 운영체제가 만든 `.DS_Store`
