@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_palette.dart';
@@ -12,6 +13,7 @@ class PlanFormSheet extends StatefulWidget {
     required this.onSubmit,
     required this.supportsMediaUpload,
     this.initialPlan,
+    this.clock,
     super.key,
   });
 
@@ -19,6 +21,7 @@ class PlanFormSheet extends StatefulWidget {
   final PlanItem? initialPlan;
   final Future<String?> Function(PlanDraft draft) onSubmit;
   final bool supportsMediaUpload;
+  final DateTime Function()? clock;
 
   static Future<bool> show(
     BuildContext context, {
@@ -116,7 +119,7 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
     }.toList(growable: false);
     final hasInvalidWindow =
         !_verificationDueAt.isAfter(_scheduledAt) ||
-        !_verificationDueAt.isAfter(DateTime.now());
+        !_verificationDueAt.isAfter(_now());
 
     return PopScope(
       canPop: !_isSubmitting,
@@ -163,26 +166,18 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: _PickerButton(
-                          icon: Icons.calendar_today_rounded,
-                          label: AppDateUtils.fullDate(_startDate),
-                          onTap: _pickStartDate,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: _PickerButton(
-                          icon: Icons.schedule_rounded,
-                          label: AppDateUtils.hourMinute(_scheduledAt),
-                          onTap: _pickStartTime,
-                        ),
-                      ),
-                    ],
+                  _DateTimeField(
+                    key: const ValueKey('startDateTimePicker'),
+                    icon: Icons.play_arrow_rounded,
+                    label: '시작',
+                    value: _dateTimeLabel(_scheduledAt),
+                    onTap: _pickStartDateTime,
+                  ),
+                  const SizedBox(height: 10),
+                  _QuickChoiceRow(
+                    label: '빠른 설정',
+                    choices: const ['지금', '+15분', '+30분', '+1시간'],
+                    onSelected: _setQuickStart,
                   ),
                   const SizedBox(height: 22),
                   const _FieldLabel('완료 인증 시간'),
@@ -192,26 +187,18 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: _PickerButton(
-                          icon: Icons.event_available_outlined,
-                          label: AppDateUtils.fullDate(_dueDate),
-                          onTap: _pickDueDate,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: _PickerButton(
-                          icon: Icons.timer_outlined,
-                          label: AppDateUtils.hourMinute(_verificationDueAt),
-                          onTap: _pickDueTime,
-                        ),
-                      ),
-                    ],
+                  _DateTimeField(
+                    key: const ValueKey('dueDateTimePicker'),
+                    icon: Icons.flag_rounded,
+                    label: '완료 마감',
+                    value: _dateTimeLabel(_verificationDueAt),
+                    onTap: _pickDueDateTime,
+                  ),
+                  const SizedBox(height: 10),
+                  _QuickChoiceRow(
+                    label: '시작 후',
+                    choices: const ['30분', '1시간', '2시간', '3시간'],
+                    onSelected: _setQuickDue,
                   ),
                   if (_showTimeError && hasInvalidWindow) ...[
                     const SizedBox(height: 8),
@@ -396,93 +383,184 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
 
   DateTime get _verificationDueAt => _combine(_dueDate, _dueTime);
 
-  Future<void> _pickStartDate() async {
-    final picked = await _pickDate(
-      initialDate: _startDate,
-      helpText: '시작 날짜 선택',
+  Future<void> _pickStartDateTime() async {
+    final picked = await _showDateTimePicker(
+      title: '언제 시작할까요?',
+      description: '날짜와 시간을 위아래로 움직여 선택하세요.',
+      initialValue: _scheduledAt,
     );
     if (picked == null || !mounted) return;
     final duration = _safeVerificationWindow;
     setState(() {
-      _startDate = AppDateUtils.startOfDay(picked);
-      _setDueDateTime(_scheduledAt.add(duration));
+      _setStartDateTime(picked);
+      _setDueDateTime(picked.add(duration));
       _showTimeError = false;
     });
   }
 
-  Future<void> _pickStartTime() async {
-    final picked = await _pickTime(
-      initialTime: _startTime,
-      helpText: '시작 시간 선택',
+  Future<void> _pickDueDateTime() async {
+    final minimum = _scheduledAt.add(const Duration(minutes: 1));
+    final picked = await _showDateTimePicker(
+      title: '언제까지 인증할까요?',
+      description: '시작 이후의 완료 인증 마감 시간을 선택하세요.',
+      initialValue: _verificationDueAt.isBefore(minimum)
+          ? minimum
+          : _verificationDueAt,
+      minimumValue: minimum,
     );
     if (picked == null || !mounted) return;
-    final duration = _safeVerificationWindow;
     setState(() {
-      _startTime = picked;
-      _setDueDateTime(_scheduledAt.add(duration));
+      _setDueDateTime(picked);
       _showTimeError = false;
     });
   }
 
-  Future<void> _pickDueDate() async {
-    final picked = await _pickDate(
-      initialDate: _dueDate,
-      helpText: '완료 인증 날짜 선택',
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _dueDate = AppDateUtils.startOfDay(picked);
-      _showTimeError = !_verificationDueAt.isAfter(_scheduledAt);
-    });
-  }
-
-  Future<void> _pickDueTime() async {
-    final picked = await _pickTime(
-      initialTime: _dueTime,
-      helpText: '완료 인증 시간 선택',
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _dueTime = picked;
-      _showTimeError = !_verificationDueAt.isAfter(_scheduledAt);
-    });
-  }
-
-  Future<DateTime?> _pickDate({
-    required DateTime initialDate,
-    required String helpText,
-  }) async {
-    FocusScope.of(context).unfocus();
-    final now = DateTime.now();
-    final firstYear = initialDate.year < now.year - 1
-        ? initialDate.year
-        : now.year - 1;
-    final lastYear = initialDate.year > now.year + 5
-        ? initialDate.year
-        : now.year + 5;
-    return showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(firstYear),
-      lastDate: DateTime(lastYear, 12, 31),
-      helpText: helpText,
-      cancelText: '취소',
-      confirmText: '선택',
-    );
-  }
-
-  Future<TimeOfDay?> _pickTime({
-    required TimeOfDay initialTime,
-    required String helpText,
+  Future<DateTime?> _showDateTimePicker({
+    required String title,
+    required String description,
+    required DateTime initialValue,
+    DateTime? minimumValue,
   }) {
     FocusScope.of(context).unfocus();
-    return showTimePicker(
+    var selected = _withoutSeconds(initialValue);
+    final minimum = minimumValue == null ? null : _withoutSeconds(minimumValue);
+    if (minimum != null && selected.isBefore(minimum)) {
+      selected = minimum;
+    }
+    return showModalBottomSheet<DateTime>(
       context: context,
-      initialTime: initialTime,
-      helpText: helpText,
-      cancelText: '취소',
-      confirmText: '선택',
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: AppPalette.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppPalette.line,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Text(title, style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 6),
+                Text(description, style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppPalette.surface,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: CupertinoTheme(
+                    data: const CupertinoThemeData(
+                      brightness: Brightness.light,
+                      primaryColor: AppPalette.blue,
+                    ),
+                    child: SizedBox(
+                      height: 210,
+                      child: CupertinoDatePicker(
+                        mode: CupertinoDatePickerMode.dateAndTime,
+                        initialDateTime: selected,
+                        minimumDate: minimum,
+                        maximumDate: DateTime(_now().year + 5, 12, 31, 23, 59),
+                        use24hFormat: true,
+                        minuteInterval: 1,
+                        onDateTimeChanged: (value) {
+                          setSheetState(() => selected = value);
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppPalette.blueSoft,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.schedule_rounded,
+                        size: 19,
+                        color: AppPalette.blue,
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          _dateTimeLabel(selected),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(color: AppPalette.blue),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(selected),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text('이 시간으로 선택'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
+  }
+
+  void _setQuickStart(String choice) {
+    final now = _withoutSeconds(_now());
+    final offset = switch (choice) {
+      '+15분' => const Duration(minutes: 15),
+      '+30분' => const Duration(minutes: 30),
+      '+1시간' => const Duration(hours: 1),
+      _ => Duration.zero,
+    };
+    final nextStart = now.add(offset);
+    final duration = _safeVerificationWindow;
+    setState(() {
+      _startDate = AppDateUtils.startOfDay(nextStart);
+      _startTime = TimeOfDay.fromDateTime(nextStart);
+      _setDueDateTime(nextStart.add(duration));
+      _showTimeError = false;
+    });
+  }
+
+  void _setQuickDue(String choice) {
+    final duration = switch (choice) {
+      '30분' => const Duration(minutes: 30),
+      '2시간' => const Duration(hours: 2),
+      '3시간' => const Duration(hours: 3),
+      _ => const Duration(hours: 1),
+    };
+    setState(() {
+      _setDueDateTime(_scheduledAt.add(duration));
+      _showTimeError = false;
+    });
   }
 
   Duration get _safeVerificationWindow {
@@ -495,8 +573,17 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
     _dueTime = TimeOfDay.fromDateTime(value);
   }
 
+  void _setStartDateTime(DateTime value) {
+    _startDate = AppDateUtils.startOfDay(value);
+    _startTime = TimeOfDay.fromDateTime(value);
+  }
+
   DateTime _combine(DateTime date, TimeOfDay time) {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  }
+
+  String _dateTimeLabel(DateTime value) {
+    return '${AppDateUtils.fullDate(value)} · ${AppDateUtils.hourMinute(value)}';
   }
 
   Future<void> _submit() async {
@@ -504,7 +591,7 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
     final formIsValid = _formKey.currentState?.validate() ?? false;
     final timeIsValid =
         _verificationDueAt.isAfter(_scheduledAt) &&
-        _verificationDueAt.isAfter(DateTime.now());
+        _verificationDueAt.isAfter(_now());
     if (!formIsValid || !timeIsValid) {
       setState(() => _showTimeError = !timeIsValid);
       return;
@@ -539,17 +626,21 @@ class _PlanFormSheetState extends State<PlanFormSheet> {
 
   DateTime _suggestedSchedule(DateTime selectedDate) {
     final date = AppDateUtils.startOfDay(selectedDate);
-    final now = DateTime.now();
-    if (!AppDateUtils.isSameDay(date, now)) {
-      return date.add(const Duration(hours: 9));
-    }
-
-    final next = now.add(const Duration(hours: 1));
-    if (!AppDateUtils.isSameDay(date, next)) {
-      return date.add(const Duration(hours: 23, minutes: 59));
-    }
-    return DateTime(date.year, date.month, date.day, next.hour);
+    final now = _withoutSeconds(_now());
+    return DateTime(date.year, date.month, date.day, now.hour, now.minute);
   }
+
+  DateTime _withoutSeconds(DateTime value) {
+    return DateTime(
+      value.year,
+      value.month,
+      value.day,
+      value.hour,
+      value.minute,
+    );
+  }
+
+  DateTime _now() => widget.clock?.call() ?? DateTime.now();
 }
 
 class _SheetHeader extends StatelessWidget {
@@ -601,45 +692,112 @@ class _FieldLabel extends StatelessWidget {
   }
 }
 
-class _PickerButton extends StatelessWidget {
-  const _PickerButton({
+class _DateTimeField extends StatelessWidget {
+  const _DateTimeField({
+    super.key,
     required this.icon,
     required this.label,
+    required this.value,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
+  final String value;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: AppPalette.surface,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
           child: Row(
             children: [
-              Icon(icon, size: 18, color: AppPalette.blue),
-              const SizedBox(width: 7),
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppPalette.blueSoft,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, size: 21, color: AppPalette.blue),
+              ),
+              const SizedBox(width: 13),
               Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 3),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded, color: AppPalette.muted),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _QuickChoiceRow extends StatelessWidget {
+  const _QuickChoiceRow({
+    required this.label,
+    required this.choices,
+    required this.onSelected,
+  });
+
+  final String label;
+  final List<String> choices;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AppPalette.muted,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: choices
+                  .map(
+                    (choice) => Padding(
+                      padding: const EdgeInsets.only(right: 7),
+                      child: ActionChip(
+                        label: Text(choice),
+                        backgroundColor: AppPalette.background,
+                        side: const BorderSide(color: AppPalette.line),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => onSelected(choice),
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

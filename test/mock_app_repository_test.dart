@@ -89,15 +89,15 @@ void main() {
       expect(saved.sharedToFeed, isTrue);
     });
 
-    test('시작 예정 전에는 시작·완료 인증을 저장할 수 없다', () {
+    test('시작 1시간보다 이전에는 시작·완료 인증을 저장할 수 없다', () {
       final now = DateTime(2026, 8, 22, 12);
       final repository = MockAppRepository(clock: () => now);
       addTearDown(repository.dispose);
       final plan = _addPlan(
         repository,
         title: '미래 계획 인증 차단',
-        scheduledAt: now.add(const Duration(hours: 1)),
-        verificationDueAt: now.add(const Duration(hours: 2)),
+        scheduledAt: now.add(const Duration(hours: 1, minutes: 1)),
+        verificationDueAt: now.add(const Duration(hours: 2, minutes: 1)),
       );
 
       expect(
@@ -120,6 +120,36 @@ void main() {
       );
       expect(_planById(repository, plan.id).startProof, isNull);
       expect(_planById(repository, plan.id).progress, PlanProgress.pending);
+    });
+
+    test('시작 인증은 예정 시각 1시간 전부터 가능하고 완료 인증은 아직 막힌다', () {
+      final now = DateTime(2026, 8, 22, 12);
+      final repository = MockAppRepository(clock: () => now);
+      addTearDown(repository.dispose);
+      final plan = _addPlan(
+        repository,
+        title: '미리 시작 인증',
+        scheduledAt: now.add(const Duration(hours: 1)),
+        verificationDueAt: now.add(const Duration(hours: 2)),
+      );
+
+      repository.startPlan(
+        plan.id,
+        const PlanProofDraft(
+          type: PlanProofType.start,
+          note: '',
+          sharedToFeed: false,
+        ),
+      );
+
+      expect(_planById(repository, plan.id).startProof, isNotNull);
+      expect(
+        () => repository.completePlan(
+          plan.id,
+          _completionProof(sharedToFeed: false),
+        ),
+        throwsA(isA<StateError>()),
+      );
     });
 
     test('완료 인증 공유를 켜면 인증 내용이 포함된 성공 게시물을 만든다', () {

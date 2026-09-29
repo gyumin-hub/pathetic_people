@@ -7,6 +7,7 @@ import '../../domain/models/explore_item.dart';
 import '../../domain/models/feed_post.dart';
 import '../../domain/models/plan_item.dart';
 import '../../domain/repositories/app_repository.dart';
+import '../../domain/rules/plan_timing_policy.dart';
 import '../../domain/services/mentor_message_service.dart';
 
 class MockAppRepository extends ChangeNotifier implements AppRepository {
@@ -231,7 +232,7 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
       throw StateError('대기 중인 계획만 시작 인증을 저장할 수 있습니다.');
     }
     final recordedAt = _clock();
-    _validateProofWindow(plan, recordedAt);
+    _validateStartProofWindow(plan, recordedAt);
     _plans[index] = plan.copyWith(
       startProof: _createProof(plan.id, proofDraft, recordedAt: recordedAt),
     );
@@ -261,7 +262,7 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
       throw StateError('피드에 공유하려면 완료 인증 사진을 첨부해야 합니다.');
     }
     final completedAt = _clock();
-    _validateProofWindow(plan, completedAt);
+    _validateCompletionProofWindow(plan, completedAt);
     _plans[index] = plan.copyWith(
       progress: PlanProgress.completed,
       completedAt: completedAt,
@@ -435,9 +436,18 @@ class MockAppRepository extends ChangeNotifier implements AppRepository {
     }
   }
 
-  void _validateProofWindow(PlanItem plan, DateTime now) {
+  void _validateStartProofWindow(PlanItem plan, DateTime now) {
+    if (now.isBefore(PlanTimingPolicy.startProofOpensAt(plan.scheduledAt))) {
+      throw StateError('시작 인증은 시작 예정 1시간 전부터 할 수 있습니다.');
+    }
+    if (!now.isBefore(plan.verificationDueAt)) {
+      throw StateError('완료 인증 시간이 지나 이 계획은 인증할 수 없습니다.');
+    }
+  }
+
+  void _validateCompletionProofWindow(PlanItem plan, DateTime now) {
     if (now.isBefore(plan.scheduledAt)) {
-      throw StateError('시작 예정 시간이 된 뒤에 인증할 수 있습니다.');
+      throw StateError('완료 인증은 시작 예정 시간이 된 뒤에 할 수 있습니다.');
     }
     if (!now.isBefore(plan.verificationDueAt)) {
       throw StateError('완료 인증 시간이 지나 이 계획은 인증할 수 없습니다.');

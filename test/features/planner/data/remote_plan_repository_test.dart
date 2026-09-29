@@ -121,35 +121,49 @@ void main() {
       },
     );
 
-    test('blocks Flutter image bytes until media upload exists', () async {
-      var requestCount = 0;
+    test('sends selected proof image as multipart data', () async {
+      http.Request? capturedRequest;
       final repository = _repository(
-        MockClient((_) async {
-          requestCount += 1;
-          return _jsonResponse(_occurrenceJson());
+        MockClient((request) async {
+          capturedRequest = request;
+          return _jsonResponse(
+            _occurrenceJson(
+              startProof: {
+                'id': 31,
+                'proofType': 'START',
+                'mediaUrl': 'https://signed.example/proof.jpg',
+                'mediaName': 'proof.jpg',
+                'note': '시작',
+                'sharedToFeed': false,
+                'recordedAt': '2026-08-25T19:05:00+09:00',
+              },
+            ),
+          );
         }),
       );
 
-      await expectLater(
-        repository.recordStartProof(
-          '22',
-          PlanProofDraft(
-            type: PlanProofType.start,
-            mediaBytes: Uint8List.fromList([1, 2, 3]),
-            mediaName: 'proof.jpg',
-            note: '',
-            sharedToFeed: false,
-          ),
-        ),
-        throwsA(
-          isA<PlanRepositoryException>().having(
-            (error) => error.userMessage,
-            'userMessage',
-            contains('사진을 서버에 올리는 기능'),
-          ),
+      final plan = await repository.recordStartProof(
+        '22',
+        PlanProofDraft(
+          type: PlanProofType.start,
+          mediaBytes: Uint8List.fromList([1, 2, 3]),
+          mediaName: 'proof.jpg',
+          note: ' 시작 ',
+          sharedToFeed: false,
         ),
       );
-      expect(requestCount, 0);
+
+      expect(
+        capturedRequest?.headers['content-type'],
+        contains('multipart/form-data'),
+      );
+      final multipartBody = latin1.decode(capturedRequest!.bodyBytes);
+      expect(multipartBody, contains('name="note"'));
+      expect(multipartBody, contains('name="shareToFeed"'));
+      expect(multipartBody, contains('false'));
+      expect(multipartBody, contains('name="media"'));
+      expect(multipartBody, contains('filename="proof.jpg"'));
+      expect(plan.startProof?.mediaUrl, 'https://signed.example/proof.jpg');
     });
 
     test(
@@ -176,11 +190,11 @@ void main() {
             isA<PlanRepositoryException>().having(
               (error) => error.userMessage,
               'userMessage',
-              contains('피드 공유에는 업로드된 사진'),
+              contains('피드에 공유할 때는 사진'),
             ),
           ),
         );
-        expect(requestCount, 0);
+        expect(requestCount, 1);
       },
     );
 

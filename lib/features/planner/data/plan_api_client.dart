@@ -109,14 +109,42 @@ class PlanApiClient {
     String proofPath,
     ProofCreateRequestDto request,
   ) async {
-    final response = await _postJson(
-      _uri(
-        '/api/v1/plans/${Uri.encodeComponent(occurrenceId)}/proofs/$proofPath',
-      ),
-      body: request.toJson(),
+    final uri = _uri(
+      '/api/v1/plans/${Uri.encodeComponent(occurrenceId)}/proofs/$proofPath',
     );
+    final response = request.mediaBytes == null
+        ? await _postJson(uri, body: request.toJson())
+        : await _postMultipart(uri, request);
     _throwIfRequestFailed(response);
     return _decodeOccurrence(response);
+  }
+
+  Future<http.Response> _postMultipart(
+    Uri uri,
+    ProofCreateRequestDto request,
+  ) async {
+    final multipart = http.MultipartRequest('POST', uri);
+    multipart.headers.addAll(await _authorizedHeaders());
+    if (request.note != null) {
+      multipart.fields['note'] = request.note!;
+    }
+    multipart.fields['shareToFeed'] = request.shareToFeed.toString();
+    multipart.files.add(
+      http.MultipartFile.fromBytes(
+        'media',
+        request.mediaBytes!,
+        filename: request.mediaName ?? 'proof-image',
+      ),
+    );
+
+    try {
+      final streamed = await _client.send(multipart).timeout(requestTimeout);
+      return await http.Response.fromStream(streamed).timeout(requestTimeout);
+    } on TimeoutException {
+      throw ApiException.timeout();
+    } on http.ClientException {
+      throw ApiException.network();
+    }
   }
 
   Future<http.Response> _get(Uri uri) async {

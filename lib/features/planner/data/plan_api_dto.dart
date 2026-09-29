@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../../../domain/models/plan_item.dart';
 
 class PlanCreateRequestDto {
@@ -56,19 +58,17 @@ class PlanCreateRequestDto {
 class ProofCreateRequestDto {
   const ProofCreateRequestDto({
     required this.shareToFeed,
-    this.mediaUrl,
+    this.mediaBytes,
     this.mediaName,
     this.note,
   });
 
-  final String? mediaUrl;
+  final Uint8List? mediaBytes;
   final String? mediaName;
   final String? note;
   final bool shareToFeed;
 
   Map<String, Object?> toJson() => {
-    if (mediaUrl != null) 'mediaUrl': mediaUrl,
-    if (mediaName != null) 'mediaName': mediaName,
     if (note != null) 'note': note,
     'shareToFeed': shareToFeed,
   };

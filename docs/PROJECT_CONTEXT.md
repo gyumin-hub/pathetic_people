@@ -1,6 +1,6 @@
 # Motive 프로젝트 기준 문서
 
-마지막 실제 코드 대조일: **2026-09-19**
+마지막 실제 코드 대조일: **2026-09-29**
 
 이 문서는 앱·서버를 함께 개발할 때 사용하는 제품 및 저장소 전체의 기준 문서입니다.
 기능 범위나 기술 버전이 바뀌면 코드와 같은 커밋에서 이 문서도 갱신합니다.
@@ -60,7 +60,8 @@ clone/pull하고 그 루트를 Codex에서 열면 규칙을 참고하지만, 같
 
 - `scheduledAt`: 계획을 시작하기로 한 시각입니다.
 - `verificationDueAt`: 완료 인증을 끝내야 하는 마감 시각입니다.
-- 유효한 인증 구간은 현재 서버 기준 `scheduledAt <= now < verificationDueAt`입니다.
+- 시작 인증은 `scheduledAt` 1시간 전부터 열리고, 완료 인증은
+  `scheduledAt <= now < verificationDueAt` 구간에 가능합니다.
 - 마감까지 완료 인증이 없으면 회차가 `FAILED`가 됩니다.
 
 ### 독설과 안전
@@ -155,7 +156,8 @@ Flutter -> HTTP/JSON + JWT -> Spring Boot -> MyBatis -> Supabase PostgreSQL
 - 앱 재실행 시 `/api/auth/me` 자동 로그인 확인
 - 로그아웃과 로그인 사용자별 Mock 콘텐츠 세션 격리
 - JWT 기반 계획 회차 조회와 계획·최대 60일 반복 회차 생성
-- 사진이 필요 없는 시작 인증과 비공유 완료 인증
+- 비공개 Supabase Storage를 통한 시작·완료 인증 사진 업로드
+- 사진 필수 완료 인증과 사진을 포함한 성공 공유
 
 ### Flutter UI에서는 동작하지만 메모리 Mock임
 
@@ -176,7 +178,6 @@ Flutter -> HTTP/JSON + JWT -> Spring Boot -> MyBatis -> Supabase PostgreSQL
 
 ### 아직 없음
 
-- 실제 사진 업로드와 파일 스토리지
 - 서버 계획 수정·삭제 API
 - FCM/APNs 푸시 발송, 기기 토큰, 알림 조회/읽음
 - 팔로우 관계 기반 서버 피드
@@ -193,14 +194,25 @@ Flutter -> HTTP/JSON + JWT -> Spring Boot -> MyBatis -> Supabase PostgreSQL
 
 1. 완료: Flutter 계획 화면을 Spring 계획 조회·생성 API에 연결합니다.
 2. 완료: 사진이 필요 없는 시작/완료 인증과 로딩·오류·재시도 UX를 연결합니다.
-3. 사진 업로드 스토리지와 업로드 API를 추가합니다.
+3. 완료: 비공개 사진 스토리지, multipart 업로드 API, signed URL 조회를 연결합니다.
 4. Flutter 피드를 서버 공개 도전/게시물 API에 연결합니다.
 5. 실패 알림 worker, 기기 토큰, 실제 푸시를 추가합니다.
 6. follow, like/save, comment 순으로 소셜 DB와 API를 추가합니다.
 7. 채팅을 마지막 별도 세로 흐름으로 추가합니다.
 
-다음 작업의 기본 시작점은 **3번 인증 사진 업로드**입니다. 현재 서버가 `mediaUrl`만
-받기 때문에 사진 필수 완료 인증과 사진을 포함한 성공 공유는 앱에서 명확히 제한합니다.
+사진은 Flutter에서 Spring의 인증된 multipart API로 전송하고, Spring만 Supabase의
+서버 전용 secret key를 사용합니다. DB에는 만료 링크가 아닌 Storage object path를 저장하고,
+계획·피드 응답에서는 한 시간짜리 signed URL로 변환합니다.
+
+### 다른 PC 인계 체크포인트 (2026-09-29)
+
+- 시간 선택 UI, 시작 인증 1시간 전 허용, 인증 사진 multipart 업로드 코드는 구현되어 있습니다.
+- Flutter 정적 분석과 109개 테스트, Spring 36개 테스트가 통과했습니다.
+- 실제 Supabase 사진 업로드 smoke test는 각 PC의 Git 제외
+  `application-secret.properties`에 Storage URL·secret key·버킷을 설정한 뒤 진행해야 합니다.
+- Secret 값은 Git으로 동기화되지 않으므로 새 PC에서 직접 설정합니다.
+- 실제 사진 업로드까지 확인한 다음 기본 다음 개발은 **Flutter 피드를 서버의 공개 도전 및
+  게시물 API에 연결하는 작업**입니다.
 
 ## 10. 문서별 책임
 

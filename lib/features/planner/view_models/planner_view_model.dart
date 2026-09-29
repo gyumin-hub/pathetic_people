@@ -50,7 +50,7 @@ class PlannerViewModel extends ChangeNotifier {
   bool get isSubmittingProof => _isSubmittingProof;
   bool get supportsUpdate => planRepository.supportsUpdate;
   bool get supportsDelete => planRepository.supportsDelete;
-  bool get supportsProofMediaUpload => _usesAppRepositoryPlans;
+  bool get supportsProofMediaUpload => planRepository.supportsMediaUpload;
   String? get loadErrorMessage => _loadErrorMessage;
   String? get submitErrorMessage => _submitErrorMessage;
   String? get proofErrorMessage => _proofErrorMessage;

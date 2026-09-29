@@ -291,6 +291,9 @@ class _FakePlanRepository implements PlanRepository {
   final bool supportsUpdate;
 
   @override
+  bool get supportsMediaUpload => true;
+
+  @override
   final bool supportsDelete;
 
   Future<List<PlanItem>> Function(DateTime from, DateTime to)? fetchHandler;

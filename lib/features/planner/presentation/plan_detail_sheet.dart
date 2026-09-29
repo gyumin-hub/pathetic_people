@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_palette.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../domain/models/plan_item.dart';
+import '../../../domain/rules/plan_timing_policy.dart';
 import '../view_models/planner_view_model.dart';
 import 'plan_proof_sheet.dart';
 import 'planner_ui_extensions.dart';
@@ -60,10 +61,21 @@ class _PlanDetailSheetState extends State<PlanDetailSheet> {
         _didOpenInitialProof = true;
         final plan = widget.viewModel.planById(widget.planId);
         final now = DateTime.now();
-        if (plan != null &&
+        final canOpen =
+            plan != null &&
             plan.progress == PlanProgress.pending &&
-            !now.isBefore(plan.scheduledAt) &&
-            now.isBefore(plan.verificationDueAt)) {
+            (widget.initialProofType == PlanProofType.start
+                ? PlanTimingPolicy.canRecordStartProof(
+                    scheduledAt: plan.scheduledAt,
+                    verificationDueAt: plan.verificationDueAt,
+                    now: now,
+                  )
+                : PlanTimingPolicy.canRecordCompletionProof(
+                    scheduledAt: plan.scheduledAt,
+                    verificationDueAt: plan.verificationDueAt,
+                    now: now,
+                  ));
+        if (canOpen) {
           _openProof(plan, widget.initialProofType!);
         }
       });
@@ -94,15 +106,27 @@ class _PlanDetailSheetState extends State<PlanDetailSheet> {
           final plan = widget.viewModel.planById(widget.planId);
           if (plan == null) return const _MissingPlan();
           final now = DateTime.now();
-          final canSubmitProof =
-              !now.isBefore(plan.scheduledAt) &&
-              now.isBefore(plan.verificationDueAt);
+          final canSubmitStartProof = PlanTimingPolicy.canRecordStartProof(
+            scheduledAt: plan.scheduledAt,
+            verificationDueAt: plan.verificationDueAt,
+            now: now,
+          );
+          final canSubmitCompletionProof =
+              PlanTimingPolicy.canRecordCompletionProof(
+                scheduledAt: plan.scheduledAt,
+                verificationDueAt: plan.verificationDueAt,
+                now: now,
+              );
           final completionUnavailableMessage = widget.viewModel
               .proofUnavailableMessage(plan, PlanProofType.completion);
           final proofDisabledMessage = widget.viewModel.isSubmittingProof
               ? '인증을 서버에 저장하고 있어요.'
+              : now.isBefore(
+                  PlanTimingPolicy.startProofOpensAt(plan.scheduledAt),
+                )
+              ? '시작 인증은 예정 시간 1시간 전부터 할 수 있어요.'
               : now.isBefore(plan.scheduledAt)
-              ? '시작 시간이 되면 인증할 수 있어요.'
+              ? '시작 인증은 가능해요. 완료 인증은 시작 시간부터 열려요.'
               : !now.isBefore(plan.verificationDueAt)
               ? '완료 인증 시간이 지났어요. 상태를 새로 확인해 주세요.'
               : completionUnavailableMessage;
@@ -129,9 +153,10 @@ class _PlanDetailSheetState extends State<PlanDetailSheet> {
                   _PendingActions(
                     hasStartProof: plan.startProof != null,
                     isStartEnabled:
-                        canSubmitProof && !widget.viewModel.isSubmittingProof,
+                        canSubmitStartProof &&
+                        !widget.viewModel.isSubmittingProof,
                     isCompletionEnabled:
-                        canSubmitProof &&
+                        canSubmitCompletionProof &&
                         !widget.viewModel.isSubmittingProof &&
                         completionUnavailableMessage == null,
                     disabledMessage: proofDisabledMessage,
@@ -688,9 +713,17 @@ _PlanStatusContent _statusContent(PlanItem plan, DateTime now) {
     );
   }
   if (now.isBefore(plan.scheduledAt)) {
+    final remaining = PlanTimingPolicy.until(plan.scheduledAt, now);
+    final canStartEarly = PlanTimingPolicy.canRecordStartProof(
+      scheduledAt: plan.scheduledAt,
+      verificationDueAt: plan.verificationDueAt,
+      now: now,
+    );
     return _PlanStatusContent(
-      title: '시작까지 ${_durationLabel(plan.scheduledAt.difference(now))}',
-      description: '시작 예정 시간이 되면 인증을 남기고 실행해 보세요.',
+      title: '시작까지 ${_durationLabel(remaining)}',
+      description: canStartEarly
+          ? '시작 인증은 지금 미리 남길 수 있어요.'
+          : '시작 인증은 예정 시간 1시간 전부터 열려요.',
       icon: Icons.schedule_rounded,
       color: AppPalette.blue,
       backgroundColor: AppPalette.blueSoft,
@@ -699,7 +732,7 @@ _PlanStatusContent _statusContent(PlanItem plan, DateTime now) {
   if (now.isBefore(plan.verificationDueAt)) {
     return _PlanStatusContent(
       title:
-          '완료 인증까지 ${_durationLabel(plan.verificationDueAt.difference(now))}',
+          '완료 인증까지 ${_durationLabel(PlanTimingPolicy.until(plan.verificationDueAt, now))}',
       description: plan.startProof == null
           ? '시작 인증을 남기고, 정해둔 시간 전에 완료 인증해 주세요.'
           : '시작 인증을 남겼어요. 이제 끝낸 결과를 인증하세요.',

@@ -23,6 +23,9 @@ class RemotePlanRepository implements PlanRepository {
   bool get supportsDelete => false;
 
   @override
+  bool get supportsMediaUpload => true;
+
+  @override
   Future<List<PlanItem>> fetchPlans({
     required DateTime from,
     required DateTime to,
@@ -71,12 +74,12 @@ class RemotePlanRepository implements PlanRepository {
         '시작 인증에는 PlanProofType.start가 필요합니다.',
       );
     }
-    _rejectBinaryMedia(draft);
-
     final plan = _toDomain(
       await _client.recordStartProof(
         planId,
         ProofCreateRequestDto(
+          mediaBytes: draft.mediaBytes,
+          mediaName: draft.mediaName,
           note: _trimmedOrNull(draft.note),
           shareToFeed: draft.sharedToFeed,
         ),
@@ -98,19 +101,13 @@ class RemotePlanRepository implements PlanRepository {
         '완료 인증에는 PlanProofType.completion이 필요합니다.',
       );
     }
-    _rejectBinaryMedia(draft);
-    if (draft.sharedToFeed) {
-      throw const PlanRepositoryException(
-        '피드 공유에는 업로드된 사진이 필요합니다. 사진 업로드 연결 후 사용할 수 있습니다.',
-      );
-    }
-
     final knownPlan =
         _knownPlans[planId] ?? _toDomain(await _client.fetchPlan(planId));
     _knownPlans[knownPlan.id] = knownPlan;
-    if (knownPlan.photoProofRequired) {
+    if ((knownPlan.photoProofRequired || draft.sharedToFeed) &&
+        (draft.mediaBytes == null || draft.mediaBytes!.isEmpty)) {
       throw const PlanRepositoryException(
-        '이 계획은 사진 인증이 필수입니다. 사진 업로드 연결 후 완료할 수 있습니다.',
+        '사진 인증이 필수이거나 피드에 공유할 때는 사진을 추가해 주세요.',
       );
     }
 
@@ -118,8 +115,10 @@ class RemotePlanRepository implements PlanRepository {
       await _client.recordCompletionProof(
         planId,
         ProofCreateRequestDto(
+          mediaBytes: draft.mediaBytes,
+          mediaName: draft.mediaName,
           note: _trimmedOrNull(draft.note),
-          shareToFeed: false,
+          shareToFeed: draft.sharedToFeed,
         ),
       ),
     );
@@ -144,14 +143,6 @@ class RemotePlanRepository implements PlanRepository {
       return dto.toDomain();
     } on FormatException {
       throw ApiException.invalidResponse();
-    }
-  }
-
-  void _rejectBinaryMedia(PlanProofDraft draft) {
-    if (draft.mediaBytes != null) {
-      throw const PlanRepositoryException(
-        '선택한 사진을 서버에 올리는 기능은 아직 연결되지 않았습니다. 사진 없이 다시 시도해 주세요.',
-      );
     }
   }
 

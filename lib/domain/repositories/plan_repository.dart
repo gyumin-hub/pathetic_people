@@ -3,6 +3,7 @@ import '../models/plan_item.dart';
 abstract interface class PlanRepository {
   bool get supportsUpdate;
   bool get supportsDelete;
+  bool get supportsMediaUpload;
 
   Future<List<PlanItem>> fetchPlans({
     required DateTime from,

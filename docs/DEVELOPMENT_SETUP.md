@@ -166,11 +166,15 @@ spring.datasource.url=jdbc:postgresql://YOUR_POOLER_HOST:5432/postgres?sslmode=r
 spring.datasource.username=postgres.YOUR_PROJECT_REF
 spring.datasource.password=YOUR_SUPABASE_DATABASE_PASSWORD
 jwt.secret=YOUR_32_BYTE_OR_LONGER_RANDOM_SECRET
+supabase.storage.url=https://YOUR_PROJECT_REF.supabase.co
+supabase.storage.secret-key=YOUR_SB_SECRET_KEY
+supabase.storage.bucket=motive-plan-proofs
 ```
 
 다음 보안 규칙은 반드시 지킵니다.
 
-- 실제 DB 비밀번호와 JWT 키는 이 로컬 `application-secret.properties`에만 입력합니다.
+- 실제 DB 비밀번호, JWT 키, Supabase `sb_secret_...` 키는 이 로컬
+  `application-secret.properties`에만 입력합니다.
 - 실제 값은 README, 개발 문서, 일반 메모장 `.txt`, 채팅, 코드 주석에 적지 않습니다.
 - Mac의 실제 secret 파일을 PC로 복사하지 않습니다. 각 컴퓨터에서 예시 파일을 새로 복사합니다.
 - `application-secret.properties.example`에는 자리표시자만 두며 실제 값을 넣지 않습니다.
@@ -186,22 +190,23 @@ Flyway는 서버가 시작될 때 버전 순서대로 SQL 파일을 한 번씩 �
 
 ```text
 src/main/resources/db/migration-postgresql/
-├── V1__legacy_schema.sql   # users 등 기존 기본 테이블
-└── V2__motive_core.sql     # plans, proofs, posts, notifications 등 핵심 테이블
+├── V1__legacy_schema.sql          # users 등 기존 기본 테이블
+├── V2__motive_core.sql            # plans, proofs, posts, notifications 등 핵심 테이블
+└── V3__normalize_user_emails.sql  # 이메일 소문자 정규화와 unique 보강
 ```
 
-현재 새 DB에는 V1과 V2가 자동 적용됩니다. 아직 실제 V3 파일은 없습니다. 다음 DB 구조
-변경부터 아래처럼 V3를 새로 추가합니다.
+현재 새 DB에는 V1부터 V3까지 자동 적용됩니다. 다음 DB 구조 변경부터 아래처럼 V4를
+새로 추가합니다.
 
 ```text
-V3__add_example_column.sql
 V4__create_example_table.sql
+V5__add_example_column.sql
 ```
 
 규칙은 다음과 같습니다.
 
-1. 이미 한 번 적용한 `V1`과 `V2`는 수정하거나 이름을 바꾸지 않습니다.
-2. 새 테이블·컬럼·인덱스는 다음 번호인 `V3`, `V4` 파일로 추가합니다.
+1. 이미 한 번 적용한 `V1`부터 `V3`는 수정하거나 이름을 바꾸지 않습니다.
+2. 새 테이블·컬럼·인덱스는 다음 번호인 `V4`, `V5` 파일로 추가합니다.
 3. Supabase SQL Editor에서만 `ALTER TABLE`을 실행하지 않습니다. 반드시 Flyway SQL로 남깁니다.
 4. Flyway SQL을 서버 저장소에 커밋하고 PC에서 pull한 뒤 서버를 실행합니다.
 5. 그러면 공용 Supabase DB에 아직 없는 버전만 순서대로 적용됩니다.

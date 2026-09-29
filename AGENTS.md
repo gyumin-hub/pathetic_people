@@ -48,17 +48,15 @@ setup/architecture document in the same commit.
 
 - Real server-backed features: signup, login, `/me`, JWT restore, secure token storage,
   logout, per-authenticated-user content-session isolation, plan occurrence read/create,
-  and text-only start/completion proof submission.
+  text/photo start/completion proof submission, and private Supabase Storage uploads.
 - Still in-memory through `MockAppRepository`: feed, explore, profile, preferences,
   follow state, comments, likes, saves, and chat. The local plan adapter remains only
   for injected tests/demo repositories.
 - Server-backed plan update/delete are unavailable because the Spring API does not
-  expose those endpoints. Photo-required or shared completion proof is blocked until
-  the app can turn selected bytes into a server `mediaUrl`.
-- There is no real media upload, OS push delivery, social graph, realtime chat, or
+  expose those endpoints.
+- There is no OS push delivery, social graph, realtime chat, or
   production OAuth flow yet. Do not describe placeholders as completed features.
-- The next integration slice is media upload for proof photos, followed by server feed,
-  push, social actions, and chat.
+- The next integration slice is the server feed, followed by push, social actions, and chat.
 
 ## Architecture and coding rules
 

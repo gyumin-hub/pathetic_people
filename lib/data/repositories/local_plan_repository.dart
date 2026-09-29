@@ -14,6 +14,9 @@ class LocalPlanRepository implements PlanRepository {
   bool get supportsDelete => true;
 
   @override
+  bool get supportsMediaUpload => true;
+
+  @override
   Future<List<PlanItem>> fetchPlans({
     required DateTime from,
     required DateTime to,
